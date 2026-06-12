@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use lootbox::{get_list_display, read_credential, save_credential};
+use lootbox::{get_list_display, read_credential, save_credential, update_credential};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -28,6 +28,11 @@ enum Commands {
         /// The filename to read the encrypted credentials from
         filename: PathBuf,
     },
+    /// Update a specific credential by ID in an encrypted file
+    Update {
+        /// The filename containing the encrypted credentials
+        filename: PathBuf,
+    },
 }
 
 fn main() {
@@ -37,6 +42,7 @@ fn main() {
         Commands::Save { filename } => handle_save(filename),
         Commands::List { filename } => handle_list(filename),
         Commands::Read { filename } => handle_read(filename),
+        Commands::Update { filename } => handle_update(filename),
     };
 
     if let Err(e) = result {
@@ -112,6 +118,63 @@ fn handle_read(filename: PathBuf) -> anyhow::Result<()> {
     println!();
     println!("[{}] Key: {}", credential_id, credential.key);
     println!("Value: {}", credential.value);
+
+    Ok(())
+}
+
+fn handle_update(filename: PathBuf) -> anyhow::Result<()> {
+    println!("Updating credential in: {}", filename.display());
+    println!();
+
+    // Request password (hidden input)
+    let password = rpassword::prompt_password("Enter file password: ")?;
+
+    // Request credential ID
+    print!("Enter credential ID: ");
+    io::stdout().flush()?;
+    let mut id_input = String::new();
+    io::stdin().read_line(&mut id_input)?;
+    let id_str = id_input.trim();
+
+    // Parse ID as usize
+    let credential_id: usize = id_str.parse()
+        .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
+
+    // Read current credential to display
+    let current = read_credential(&filename, &password, credential_id)?;
+
+    // Display current credential with masked value
+    println!();
+    println!("Current credential:");
+    println!("[{}] Key: {}", credential_id, current.key);
+    println!("Value: **********");
+    println!();
+
+    // Request new key (empty means keep current)
+    print!("Enter new secret key (press Enter to keep current): ");
+    io::stdout().flush()?;
+    let mut new_key_input = String::new();
+    io::stdin().read_line(&mut new_key_input)?;
+    let new_key_trimmed = new_key_input.trim();
+    let new_key = if new_key_trimmed.is_empty() {
+        None
+    } else {
+        Some(new_key_trimmed)
+    };
+
+    // Request new value (hidden, empty means keep current)
+    let new_value_input = rpassword::prompt_password("Enter new secret value (press Enter to keep current): ")?;
+    let new_value = if new_value_input.is_empty() {
+        None
+    } else {
+        Some(new_value_input.as_str())
+    };
+
+    // Update credential
+    update_credential(&filename, &password, credential_id, new_key, new_value)?;
+
+    println!();
+    println!("Credential updated successfully!");
 
     Ok(())
 }
