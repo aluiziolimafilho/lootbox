@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use lootbox::{get_list_display, read_credential, save_credential, update_credential};
+use lootbox::{get_list_display, read_credential, remove_credential, save_credential, update_credential};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -33,6 +33,11 @@ enum Commands {
         /// The filename containing the encrypted credentials
         filename: PathBuf,
     },
+    /// Remove a specific credential by ID from an encrypted file
+    Remove {
+        /// The filename containing the encrypted credentials
+        filename: PathBuf,
+    },
 }
 
 fn main() {
@@ -43,6 +48,7 @@ fn main() {
         Commands::List { filename } => handle_list(filename),
         Commands::Read { filename } => handle_read(filename),
         Commands::Update { filename } => handle_update(filename),
+        Commands::Remove { filename } => handle_remove(filename),
     };
 
     if let Err(e) = result {
@@ -175,6 +181,33 @@ fn handle_update(filename: PathBuf) -> anyhow::Result<()> {
 
     println!();
     println!("Credential updated successfully!");
+
+    Ok(())
+}
+
+fn handle_remove(filename: PathBuf) -> anyhow::Result<()> {
+    println!("Removing credential from: {}", filename.display());
+    println!();
+
+    // Request password (hidden input)
+    let password = rpassword::prompt_password("Enter file password: ")?;
+
+    // Request credential ID
+    print!("Enter credential ID: ");
+    io::stdout().flush()?;
+    let mut id_input = String::new();
+    io::stdin().read_line(&mut id_input)?;
+    let id_str = id_input.trim();
+
+    // Parse ID as usize
+    let credential_id: usize = id_str.parse()
+        .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
+
+    // Remove credential
+    remove_credential(&filename, &password, credential_id)?;
+
+    println!();
+    println!("Credential removed successfully!");
 
     Ok(())
 }

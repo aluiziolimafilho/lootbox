@@ -299,6 +299,81 @@ pub fn update_credential<P: AsRef<Path>>(
     Ok(())
 }
 
+/// Removes a specific credential by its position ID
+/// Position IDs are 1-indexed (first credential is ID 1)
+/// After removal, subsequent credentials shift down by one position
+///
+/// # Arguments
+/// * `file_path` - Path to the encrypted file
+/// * `password` - Password to decrypt and re-encrypt the file
+/// * `position_id` - The 1-indexed position ID of the credential to remove
+///
+/// # Returns
+/// Ok(()) on success, Err if invalid ID, decryption fails, or file not found
+pub fn remove_credential<P: AsRef<Path>>(
+    file_path: P,
+    password: &str,
+    position_id: usize,
+) -> Result<()> {
+    let file_path = file_path.as_ref();
+
+    // Validate password
+    validate_password(password)?;
+
+    // Load all credentials
+    let mut credentials = list_credentials(file_path, password)?;
+
+    // Validate position_id (must be >= 1 and <= credentials.len())
+    if position_id == 0 {
+        bail!("Invalid credential ID: ID must be at least 1");
+    }
+
+    if position_id > credentials.len() {
+        bail!(
+            "Invalid credential ID: {} (file contains {} credential{})",
+            position_id,
+            credentials.len(),
+            if credentials.len() == 1 { "" } else { "s" }
+        );
+    }
+
+    // Remove the credential at position_id - 1 (convert from 1-indexed to 0-indexed)
+    credentials.remove(position_id - 1);
+
+    // Serialize all credentials to JSON
+    let credentials_json = serde_json::to_vec(&credentials)
+        .context("Failed to serialize credentials")?;
+
+    // Generate salt and derive key
+    let salt = generate_salt();
+    let key = derive_key(password, &salt)?;
+
+    // Generate nonce and encrypt
+    let nonce = generate_nonce();
+    let encrypted_data = encrypt(&credentials_json, &key, &nonce)?;
+
+    // Create binary file content: salt (16 bytes) + nonce (12 bytes) + encrypted_data
+    let mut file_content = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + encrypted_data.len());
+    file_content.extend_from_slice(&salt);
+    file_content.extend_from_slice(&nonce);
+    file_content.extend_from_slice(&encrypted_data);
+
+    // Write to file
+    fs::write(file_path, file_content)
+        .context("Failed to write encrypted file")?;
+
+    // Set file permissions (Unix only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(file_path)?.permissions();
+        permissions.set_mode(0o600); // rw-------
+        fs::set_permissions(file_path, permissions)?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
