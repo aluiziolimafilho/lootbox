@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use lootbox::{get_list_display, read_credential, remove_credential, save_credential, update_credential};
+use lootbox::{generate_env_vars, get_list_display, read_credential, remove_credential, save_credential, update_credential};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -38,6 +38,11 @@ enum Commands {
         /// The filename containing the encrypted credentials
         filename: PathBuf,
     },
+    /// Export credentials as environment variables
+    Env {
+        /// The filename containing the encrypted credentials
+        filename: PathBuf,
+    },
 }
 
 fn main() {
@@ -49,6 +54,7 @@ fn main() {
         Commands::Read { filename } => handle_read(filename),
         Commands::Update { filename } => handle_update(filename),
         Commands::Remove { filename } => handle_remove(filename),
+        Commands::Env { filename } => handle_env(filename),
     };
 
     if let Err(e) = result {
@@ -210,4 +216,39 @@ fn handle_remove(filename: PathBuf) -> anyhow::Result<()> {
     println!("Credential removed successfully!");
 
     Ok(())
+}
+
+fn handle_env(filename: PathBuf) -> anyhow::Result<()> {
+    let password = rpassword::prompt_password("# Enter file password: ")?;
+
+    let result = generate_env_vars(&filename, &password)?;
+
+    println!("# Exporting credentials from: {}", filename.display());
+
+    for entry in &result.created {
+        println!("export {}={}", entry.env_name, shell_escape(&entry.value));
+    }
+
+    if !result.created.is_empty() {
+        println!("# Created ({}):", result.created.len());
+        for entry in &result.created {
+            println!("#   {} -> {}", entry.original_key, entry.env_name);
+        }
+    }
+
+    if !result.invalid.is_empty() {
+        println!("# Skipped ({}):", result.invalid.len());
+        for entry in &result.invalid {
+            println!("#   {} - {}", entry.original_key, entry.reason);
+        }
+    }
+
+    Ok(())
+}
+
+/// Wraps a value in single quotes and escapes any single quotes within it,
+/// producing a POSIX-safe shell string for use in `export KEY='value'`.
+fn shell_escape(value: &str) -> String {
+    // Replace every ' with '\'' (end quote, literal quote, reopen quote)
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
