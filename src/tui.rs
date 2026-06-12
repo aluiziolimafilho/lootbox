@@ -13,7 +13,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Row, Table},
+    widgets::{Block, Borders, Clear, Paragraph, Row, Table, TableState},
     Frame, Terminal,
 };
 use std::{
@@ -32,7 +32,6 @@ enum Field {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UpdateStep {
-    SelectId,
     EditFields,
 }
 
@@ -43,6 +42,7 @@ enum AppState {
     },
     CredentialList {
         credentials: Vec<Credential>,
+        selected: usize,
     },
     AddForm {
         key: String,
@@ -61,11 +61,8 @@ enum AppState {
         error: Option<String>,
     },
     RemoveConfirm {
-        id: String,
-        error: Option<String>,
-    },
-    ReadSelect {
-        id: String,
+        id: usize,
+        key: String,
         error: Option<String>,
     },
     ReadView {
@@ -103,6 +100,7 @@ impl App {
     fn credential_list_state(&self) -> AppState {
         AppState::CredentialList {
             credentials: self.reload_credentials().unwrap_or_default(),
+            selected: 0,
         }
     }
 }
@@ -162,7 +160,6 @@ fn handle_key(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
         AppState::AddForm { .. } => handle_add(code, modifiers, app),
         AppState::UpdateForm { .. } => handle_update(code, modifiers, app),
         AppState::RemoveConfirm { .. } => handle_remove(code, app),
-        AppState::ReadSelect { .. } => handle_read_select(code, app),
         AppState::ReadView { .. } => handle_read_view(code, app),
         AppState::EnvVars { .. } => {
             app.state = app.credential_list_state();
@@ -187,7 +184,7 @@ fn handle_password(code: KeyCode, app: &mut App) -> Result<bool> {
             match list_credentials(&app.file_path, &password) {
                 Ok(credentials) => {
                     app.password = password;
-                    app.state = AppState::CredentialList { credentials };
+                    app.state = AppState::CredentialList { credentials, selected: 0 };
                 }
                 Err(e) => {
                     *error = Some(e.to_string());
@@ -205,8 +202,28 @@ fn handle_password(code: KeyCode, app: &mut App) -> Result<bool> {
 }
 
 fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
+    // Read current selection before mutating state
+    let (cred_count, selected) =
+        if let AppState::CredentialList { ref credentials, selected } = app.state {
+            (credentials.len(), selected)
+        } else {
+            (0, 0)
+        };
+
     match code {
         KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
+
+        KeyCode::Up => {
+            if let AppState::CredentialList { ref mut selected, .. } = app.state {
+                if *selected > 0 { *selected -= 1; }
+            }
+        }
+        KeyCode::Down => {
+            if let AppState::CredentialList { ref mut selected, .. } = app.state {
+                if *selected + 1 < cred_count { *selected += 1; }
+            }
+        }
+
         KeyCode::Char('a') | KeyCode::Char('A') => {
             app.state = AppState::AddForm {
                 key: String::new(),
@@ -217,27 +234,46 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
             };
         }
         KeyCode::Char('u') | KeyCode::Char('U') => {
-            app.state = AppState::UpdateForm {
-                step: UpdateStep::SelectId,
-                id: String::new(),
-                key: String::new(),
-                value: String::new(),
-                focus: Field::Key,
-                value_visible: false,
-                error: None,
-            };
+            if cred_count > 0 {
+                let pos = selected + 1;
+                if let Ok(cred) = read_credential(&app.file_path, &app.password, pos) {
+                    app.state = AppState::UpdateForm {
+                        step: UpdateStep::EditFields,
+                        id: format!("{pos}"),
+                        key: cred.key,
+                        value: cred.value,
+                        focus: Field::Key,
+                        value_visible: false,
+                        error: None,
+                    };
+                }
+            }
         }
         KeyCode::Char('r') | KeyCode::Char('R') => {
-            app.state = AppState::RemoveConfirm {
-                id: String::new(),
-                error: None,
-            };
+            if cred_count > 0 {
+                let key = if let AppState::CredentialList { ref credentials, selected } = app.state {
+                    credentials[selected].key.clone()
+                } else {
+                    String::new()
+                };
+                app.state = AppState::RemoveConfirm {
+                    id: selected + 1,
+                    key,
+                    error: None,
+                };
+            }
         }
         KeyCode::Char('s') | KeyCode::Char('S') => {
-            app.state = AppState::ReadSelect {
-                id: String::new(),
-                error: None,
-            };
+            if cred_count > 0 {
+                let pos = selected + 1;
+                if let Ok(cred) = read_credential(&app.file_path, &app.password, pos) {
+                    app.state = AppState::ReadView {
+                        id: pos,
+                        credential: cred,
+                        value_visible: false,
+                    };
+                }
+            }
         }
         KeyCode::Char('e') | KeyCode::Char('E') => {
             match generate_env_vars(&app.file_path, &app.password) {
@@ -351,38 +387,6 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
     };
 
     match step {
-        UpdateStep::SelectId => match code {
-            KeyCode::Esc => {
-                app.state = app.credential_list_state();
-            }
-            KeyCode::Backspace => {
-                id.pop();
-                *error = None;
-            }
-            KeyCode::Enter => match id.parse::<usize>() {
-                Ok(pos) => {
-                    match read_credential(&app.file_path, &app.password, pos) {
-                        Ok(credential) => {
-                            *key = credential.key;
-                            *value = credential.value;
-                            *step = UpdateStep::EditFields;
-                            *error = None;
-                        }
-                        Err(e) => {
-                            *error = Some(e.to_string());
-                        }
-                    }
-                }
-                Err(_) => {
-                    *error = Some("ID must be a positive integer".to_string());
-                }
-            },
-            KeyCode::Char(c) if c.is_ascii_digit() => {
-                id.push(c);
-                *error = None;
-            }
-            _ => {}
-        },
         UpdateStep::EditFields => match code {
             KeyCode::Esc => {
                 app.state = app.credential_list_state();
@@ -441,7 +445,7 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
 }
 
 fn handle_remove(code: KeyCode, app: &mut App) -> Result<bool> {
-    let AppState::RemoveConfirm { ref mut id, ref mut error } = app.state else {
+    let AppState::RemoveConfirm { id, ref mut error, .. } = app.state else {
         return Ok(false);
     };
 
@@ -449,65 +453,15 @@ fn handle_remove(code: KeyCode, app: &mut App) -> Result<bool> {
         KeyCode::Esc => {
             app.state = app.credential_list_state();
         }
-        KeyCode::Backspace => {
-            id.pop();
-            *error = None;
-        }
-        KeyCode::Enter => match id.parse::<usize>() {
-            Ok(pos) => match remove_credential(&app.file_path, &app.password, pos) {
+        KeyCode::Enter => {
+            match remove_credential(&app.file_path, &app.password, id) {
                 Ok(()) => {
                     app.state = app.credential_list_state();
                 }
                 Err(e) => {
                     *error = Some(e.to_string());
                 }
-            },
-            Err(_) => {
-                *error = Some("ID must be a positive integer".to_string());
             }
-        },
-        KeyCode::Char(c) if c.is_ascii_digit() => {
-            id.push(c);
-            *error = None;
-        }
-        _ => {}
-    }
-    Ok(false)
-}
-
-fn handle_read_select(code: KeyCode, app: &mut App) -> Result<bool> {
-    let AppState::ReadSelect { ref mut id, ref mut error } = app.state else {
-        return Ok(false);
-    };
-
-    match code {
-        KeyCode::Esc => {
-            app.state = app.credential_list_state();
-        }
-        KeyCode::Backspace => {
-            id.pop();
-            *error = None;
-        }
-        KeyCode::Enter => match id.parse::<usize>() {
-            Ok(pos) => match read_credential(&app.file_path, &app.password, pos) {
-                Ok(credential) => {
-                    app.state = AppState::ReadView {
-                        id: pos,
-                        credential,
-                        value_visible: false,
-                    };
-                }
-                Err(e) => {
-                    *error = Some(e.to_string());
-                }
-            },
-            Err(_) => {
-                *error = Some("ID must be a positive integer".to_string());
-            }
-        },
-        KeyCode::Char(c) if c.is_ascii_digit() => {
-            id.push(c);
-            *error = None;
         }
         _ => {}
     }
@@ -536,8 +490,8 @@ fn handle_read_view(code: KeyCode, app: &mut App) -> Result<bool> {
 fn draw(f: &mut Frame, app: &App) {
     match &app.state {
         AppState::PasswordInput { input, error } => draw_password(f, &app.file_path, input, error),
-        AppState::CredentialList { credentials } => {
-            draw_list(f, &app.file_path, credentials);
+        AppState::CredentialList { credentials, selected } => {
+            draw_list(f, &app.file_path, credentials, *selected);
         }
         AppState::AddForm { key, value, focus, value_visible, error } => {
             draw_list_bg(f);
@@ -547,13 +501,9 @@ fn draw(f: &mut Frame, app: &App) {
             draw_list_bg(f);
             draw_update_form(f, *step, id, key, value, *focus, *value_visible, error);
         }
-        AppState::RemoveConfirm { id, error } => {
+        AppState::RemoveConfirm { id, key, error } => {
             draw_list_bg(f);
-            draw_remove_form(f, id, error);
-        }
-        AppState::ReadSelect { id, error } => {
-            draw_list_bg(f);
-            draw_read_select(f, id, error);
+            draw_remove_form(f, *id, key, error);
         }
         AppState::ReadView { id, credential, value_visible } => {
             draw_read_view(f, *id, credential, *value_visible);
@@ -610,7 +560,7 @@ fn draw_password(f: &mut Frame, file_path: &PathBuf, input: &str, error: &Option
     f.render_widget(para, inner);
 }
 
-fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential]) {
+fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential], selected: usize) {
     let area = f.area();
 
     let chunks = Layout::default()
@@ -645,9 +595,14 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential]) {
     let table = Table::new(rows, widths)
         .header(header)
         .block(block)
-        .column_spacing(2);
+        .column_spacing(2)
+        .row_highlight_style(
+            Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▶ ");
 
-    f.render_widget(table, chunks[0]);
+    let mut state = TableState::default().with_selected(Some(selected));
+    f.render_stateful_widget(table, chunks[0], &mut state);
 
     let bar = Paragraph::new(Line::from(vec![
         Span::styled(" [A]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
@@ -661,7 +616,8 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential]) {
         Span::styled("[E]", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
         Span::styled("nv  ", Style::default().fg(Color::White)),
         Span::styled("[Q]", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Span::styled("uit", Style::default().fg(Color::White)),
+        Span::styled("uit  ", Style::default().fg(Color::White)),
+        Span::styled("↑↓ scroll", Style::default().fg(Color::DarkGray)),
     ]))
     .block(
         Block::default()
@@ -776,27 +732,6 @@ fn draw_update_form(
     let mut lines = vec![Line::from("")];
 
     match step {
-        UpdateStep::SelectId => {
-            lines.push(Line::from(vec![
-                Span::styled("  Select ID: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    format!("{}_", id),
-                    Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
-                ),
-            ]));
-            lines.push(Line::from(""));
-            if let Some(err) = error {
-                lines.push(Line::from(Span::styled(
-                    format!("  {err}"),
-                    Style::default().fg(Color::Red),
-                )));
-                lines.push(Line::from(""));
-            }
-            lines.push(Line::from(Span::styled(
-                "  Enter → confirm   Esc → cancel",
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
         UpdateStep::EditFields => {
             let key_style = if focus == Field::Key {
                 Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
@@ -849,7 +784,7 @@ fn draw_update_form(
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-fn draw_remove_form(f: &mut Frame, id: &str, error: &Option<String>) {
+fn draw_remove_form(f: &mut Frame, id: usize, key: &str, error: &Option<String>) {
     let area = centered_rect(60, 40, f.area());
     f.render_widget(Clear, area);
 
@@ -864,9 +799,9 @@ fn draw_remove_form(f: &mut Frame, id: &str, error: &Option<String>) {
     let mut lines = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Select ID: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Removing: ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("{}_", id),
+                format!("[{id}] {key}"),
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -882,47 +817,7 @@ fn draw_remove_form(f: &mut Frame, id: &str, error: &Option<String>) {
     }
 
     lines.push(Line::from(Span::styled(
-        "  Enter → remove   Esc → cancel",
-        Style::default().fg(Color::DarkGray),
-    )));
-
-    f.render_widget(Paragraph::new(lines), inner);
-}
-
-fn draw_read_select(f: &mut Frame, id: &str, error: &Option<String>) {
-    let area = centered_rect(60, 40, f.area());
-    f.render_widget(Clear, area);
-
-    let block = Block::default()
-        .title(" Show Credential ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    let mut lines = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  Select ID: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("{}_", id),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(""),
-    ];
-
-    if let Some(err) = error {
-        lines.push(Line::from(Span::styled(
-            format!("  {err}"),
-            Style::default().fg(Color::Red),
-        )));
-        lines.push(Line::from(""));
-    }
-
-    lines.push(Line::from(Span::styled(
-        "  Enter → show   Esc → cancel",
+        "  Enter → confirm   Esc → cancel",
         Style::default().fg(Color::DarkGray),
     )));
 
