@@ -283,17 +283,35 @@ fn test_save_with_password_containing_whitespace_in_middle() {
 }
 
 #[test]
-fn test_save_with_very_long_password() {
+fn test_save_with_password_exactly_32_characters() {
     // Given: A new file path
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    // When: Using a very long password (should work due to key derivation)
-    let long_password = "a".repeat(1000);
-    let result = save_credential(&file_path, &long_password, "key", "value");
+    // When: Saving with exactly 32-character password (maximum allowed)
+    let password = "a".repeat(32);
+    let result = save_credential(&file_path, &password, "key", "value");
 
-    // Then: Should handle properly
+    // Then: Should succeed
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_save_with_password_exceeding_32_characters() {
+    // Given: A new file path
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+
+    // When: Attempting to save with 33-character password (exceeds maximum)
+    let password = "a".repeat(33);
+    let result = save_credential(&file_path, &password, "key", "value");
+
+    // Then: Should return an error
+    assert!(result.is_err());
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("32") || error_msg.contains("maximum") || error_msg.contains("characters"));
+    // And: File should not be created
+    assert!(!file_path.exists());
 }
 
 // ============================================================================
@@ -330,6 +348,38 @@ fn test_save_with_whitespace_only_key() {
     assert!(!file_path.exists());
 }
 
+#[test]
+fn test_save_with_secret_key_exactly_64_characters() {
+    // Given: A new file path
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+
+    // When: Saving with exactly 64-character secret key (maximum allowed)
+    let key = "a".repeat(64);
+    let result = save_credential(&file_path, "password123", &key, "value");
+
+    // Then: Should succeed
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_save_with_secret_key_exceeding_64_characters() {
+    // Given: A new file path
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+
+    // When: Attempting to save with 65-character secret key (exceeds maximum)
+    let key = "a".repeat(65);
+    let result = save_credential(&file_path, "password123", &key, "value");
+
+    // Then: Should return an error
+    assert!(result.is_err());
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("64") || error_msg.contains("maximum") || error_msg.contains("characters"));
+    // And: File should not be created
+    assert!(!file_path.exists());
+}
+
 // ============================================================================
 // Secret Value Validation Tests
 // ============================================================================
@@ -360,6 +410,38 @@ fn test_save_with_whitespace_only_value() {
 
     // Then: Should return an error
     assert!(result.is_err());
+    // And: File should not be created
+    assert!(!file_path.exists());
+}
+
+#[test]
+fn test_save_with_secret_value_exactly_5000_characters() {
+    // Given: A new file path
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+
+    // When: Saving with exactly 5000-character secret value (maximum allowed)
+    let value = "a".repeat(5000);
+    let result = save_credential(&file_path, "password123", "key", &value);
+
+    // Then: Should succeed
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_save_with_secret_value_exceeding_5000_characters() {
+    // Given: A new file path
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+
+    // When: Attempting to save with 5001-character secret value (exceeds maximum)
+    let value = "a".repeat(5001);
+    let result = save_credential(&file_path, "password123", "key", &value);
+
+    // Then: Should return an error
+    assert!(result.is_err());
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("5000") || error_msg.contains("maximum") || error_msg.contains("characters"));
     // And: File should not be created
     assert!(!file_path.exists());
 }
@@ -426,9 +508,9 @@ fn test_save_with_very_long_key_and_value() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    // When: Using very long key and value
-    let long_key = "key_".to_string() + &"a".repeat(10000);
-    let long_value = "value_".to_string() + &"b".repeat(100000);
+    // When: Using key and value at the maximum allowed lengths
+    let long_key = "a".repeat(64);
+    let long_value = "b".repeat(5000);
     let result = save_credential(&file_path, "password123", &long_key, &long_value);
 
     // Then: Should handle properly

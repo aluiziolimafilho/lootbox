@@ -241,9 +241,9 @@ fn test_update_with_very_long_values() {
 
     save_credential(&file_path, password, "key", "value").unwrap();
 
-    // When: Updating with very long values
-    let long_key = "k".repeat(1000);
-    let long_value = "v".repeat(10000);
+    // When: Updating with values at the maximum allowed lengths
+    let long_key = "k".repeat(64);
+    let long_value = "v".repeat(5000);
     update_credential(&file_path, password, 1, Some(&long_key), Some(&long_value)).unwrap();
 
     // Then: Should store long values correctly
@@ -604,6 +604,78 @@ fn test_update_fails_with_whitespace_only_new_value() {
     assert!(result.is_err());
     let error_msg = result.unwrap_err().to_string();
     assert!(error_msg.contains("whitespace") || error_msg.contains("value"));
+}
+
+#[test]
+fn test_update_with_secret_key_exactly_64_characters() {
+    // Given: An encrypted file with a credential
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
+
+    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+
+    // When: Updating with exactly 64-character key (maximum allowed)
+    let key = "a".repeat(64);
+    let result = update_credential(&file_path, password, 1, Some(&key), None);
+
+    // Then: Should succeed
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_update_with_secret_key_exceeding_64_characters() {
+    // Given: An encrypted file with a credential
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
+
+    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+
+    // When: Attempting to update with 65-character key (exceeds maximum)
+    let key = "a".repeat(65);
+    let result = update_credential(&file_path, password, 1, Some(&key), None);
+
+    // Then: Should return an error
+    assert!(result.is_err());
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("64") || error_msg.contains("maximum") || error_msg.contains("characters"));
+}
+
+#[test]
+fn test_update_with_secret_value_exactly_5000_characters() {
+    // Given: An encrypted file with a credential
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
+
+    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+
+    // When: Updating with exactly 5000-character value (maximum allowed)
+    let value = "a".repeat(5000);
+    let result = update_credential(&file_path, password, 1, None, Some(&value));
+
+    // Then: Should succeed
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_update_with_secret_value_exceeding_5000_characters() {
+    // Given: An encrypted file with a credential
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
+
+    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+
+    // When: Attempting to update with 5001-character value (exceeds maximum)
+    let value = "a".repeat(5001);
+    let result = update_credential(&file_path, password, 1, None, Some(&value));
+
+    // Then: Should return an error
+    assert!(result.is_err());
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("5000") || error_msg.contains("maximum") || error_msg.contains("characters"));
 }
 
 // ============================================================================

@@ -176,8 +176,8 @@ fn test_read_credential_with_very_long_values() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
-    let long_key = "k".repeat(1000);
-    let long_value = "v".repeat(10000);
+    let long_key = "k".repeat(64);
+    let long_value = "v".repeat(5000);
 
     save_credential(&file_path, password, &long_key, &long_value).unwrap();
 

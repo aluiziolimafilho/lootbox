@@ -435,7 +435,7 @@ fn test_list_with_very_long_key() {
     // Given: An encrypted file with very long key
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
-    let long_key = "key_".to_string() + &"a".repeat(10000);
+    let long_key = "a".repeat(64);
 
     save_credential(&file_path, "password123", &long_key, "value").unwrap();
 
