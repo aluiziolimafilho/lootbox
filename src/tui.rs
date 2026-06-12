@@ -360,9 +360,18 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
                 *error = None;
             }
             KeyCode::Enter => match id.parse::<usize>() {
-                Ok(_) => {
-                    *step = UpdateStep::EditFields;
-                    *error = None;
+                Ok(pos) => {
+                    match read_credential(&app.file_path, &app.password, pos) {
+                        Ok(credential) => {
+                            *key = credential.key;
+                            *value = credential.value;
+                            *step = UpdateStep::EditFields;
+                            *error = None;
+                        }
+                        Err(e) => {
+                            *error = Some(e.to_string());
+                        }
+                    }
                 }
                 Err(_) => {
                     *error = Some("ID must be a positive integer".to_string());
@@ -406,8 +415,8 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
                     return Ok(false);
                 }
                 let pos: usize = id.parse().unwrap_or(0);
-                let new_key = if key.is_empty() { None } else { Some(key.as_str()) };
-                let new_value = if value.is_empty() { None } else { Some(value.as_str()) };
+                let new_key = Some(key.as_str());
+                let new_value = Some(value.as_str());
                 match update_credential(&app.file_path, &app.password, pos, new_key, new_value) {
                     Ok(()) => {
                         app.state = app.credential_list_state();
@@ -812,22 +821,14 @@ fn draw_update_form(
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("  New Key:   ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Key:   ", Style::default().fg(Color::DarkGray)),
                 Span::styled(format!("{}_", key), key_style),
             ]));
-            lines.push(Line::from(Span::styled(
-                "             (blank = keep current)",
-                Style::default().fg(Color::DarkGray),
-            )));
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("  New Value: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(displayed_value, val_style),
             ]));
-            lines.push(Line::from(Span::styled(
-                "             (blank = keep current)",
-                Style::default().fg(Color::DarkGray),
-            )));
             lines.push(Line::from(""));
             if let Some(err) = error {
                 lines.push(Line::from(Span::styled(
