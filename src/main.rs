@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use lootbox::{get_list_display, save_credential};
+use lootbox::{get_list_display, read_credential, save_credential};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -23,6 +23,11 @@ enum Commands {
         /// The filename to read the encrypted credentials from
         filename: PathBuf,
     },
+    /// Read a specific credential by ID from an encrypted file
+    Read {
+        /// The filename to read the encrypted credentials from
+        filename: PathBuf,
+    },
 }
 
 fn main() {
@@ -31,6 +36,7 @@ fn main() {
     let result = match cli.command {
         Commands::Save { filename } => handle_save(filename),
         Commands::List { filename } => handle_list(filename),
+        Commands::Read { filename } => handle_read(filename),
     };
 
     if let Err(e) = result {
@@ -77,6 +83,35 @@ fn handle_list(filename: PathBuf) -> anyhow::Result<()> {
 
     println!();
     println!("{}", display);
+
+    Ok(())
+}
+
+fn handle_read(filename: PathBuf) -> anyhow::Result<()> {
+    println!("Reading credential from: {}", filename.display());
+    println!();
+
+    // Request password (hidden input)
+    let password = rpassword::prompt_password("Enter file password: ")?;
+
+    // Request credential ID
+    print!("Enter credential ID: ");
+    io::stdout().flush()?;
+    let mut id_input = String::new();
+    io::stdin().read_line(&mut id_input)?;
+    let id_str = id_input.trim();
+
+    // Parse ID as usize
+    let credential_id: usize = id_str.parse()
+        .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
+
+    // Read credential
+    let credential = read_credential(&filename, &password, credential_id)?;
+
+    // Display credential with ID, key, and value in plain text
+    println!();
+    println!("[{}] Key: {}", credential_id, credential.key);
+    println!("Value: {}", credential.value);
 
     Ok(())
 }

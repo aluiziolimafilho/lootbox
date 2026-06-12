@@ -171,6 +171,42 @@ pub fn get_list_display<P: AsRef<Path>>(file_path: P, password: &str) -> Result<
     Ok(output)
 }
 
+/// Reads a specific credential by its position ID
+/// Position IDs are 1-indexed (first credential is ID 1)
+///
+/// # Arguments
+/// * `file_path` - Path to the encrypted file
+/// * `password` - Password to decrypt the file
+/// * `position_id` - The 1-indexed position ID of the credential to read
+///
+/// # Returns
+/// Ok(Credential) with plain text key and value, Err if invalid ID or decryption fails
+pub fn read_credential<P: AsRef<Path>>(
+    file_path: P,
+    password: &str,
+    position_id: usize,
+) -> Result<Credential> {
+    // Load all credentials
+    let credentials = list_credentials(file_path, password)?;
+
+    // Validate position_id (must be >= 1 and <= credentials.len())
+    if position_id == 0 {
+        bail!("Invalid credential ID: ID must be at least 1");
+    }
+
+    if position_id > credentials.len() {
+        bail!(
+            "Invalid credential ID: {} (file contains {} credential{})",
+            position_id,
+            credentials.len(),
+            if credentials.len() == 1 { "" } else { "s" }
+        );
+    }
+
+    // Return the credential at position_id - 1 (convert from 1-indexed to 0-indexed)
+    Ok(credentials[position_id - 1].clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +296,125 @@ mod tests {
         assert!(display.contains("api_key"));
         assert!(!display.contains("super_secret"));
         assert_eq!(display.matches('*').count(), 10);
+    }
+
+    #[test]
+    fn test_read_single_credential_by_id() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "api_key", "secret_value").unwrap();
+
+        let credential = read_credential(&file_path, "password123", 1).unwrap();
+        assert_eq!(credential.key, "api_key");
+        assert_eq!(credential.value, "secret_value");
+    }
+
+    #[test]
+    fn test_read_first_credential_from_multiple() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "first", "value1").unwrap();
+        save_credential(&file_path, "password123", "second", "value2").unwrap();
+        save_credential(&file_path, "password123", "third", "value3").unwrap();
+
+        let credential = read_credential(&file_path, "password123", 1).unwrap();
+        assert_eq!(credential.key, "first");
+        assert_eq!(credential.value, "value1");
+    }
+
+    #[test]
+    fn test_read_middle_credential_from_multiple() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "first", "value1").unwrap();
+        save_credential(&file_path, "password123", "second", "value2").unwrap();
+        save_credential(&file_path, "password123", "third", "value3").unwrap();
+
+        let credential = read_credential(&file_path, "password123", 2).unwrap();
+        assert_eq!(credential.key, "second");
+        assert_eq!(credential.value, "value2");
+    }
+
+    #[test]
+    fn test_read_last_credential_from_multiple() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "first", "value1").unwrap();
+        save_credential(&file_path, "password123", "second", "value2").unwrap();
+        save_credential(&file_path, "password123", "third", "value3").unwrap();
+
+        let credential = read_credential(&file_path, "password123", 3).unwrap();
+        assert_eq!(credential.key, "third");
+        assert_eq!(credential.value, "value3");
+    }
+
+    #[test]
+    fn test_read_returns_plain_text_value() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "key", "super_secret_value").unwrap();
+
+        let credential = read_credential(&file_path, "password123", 1).unwrap();
+        assert_eq!(credential.value, "super_secret_value");
+        assert_ne!(credential.value, "**********");
+    }
+
+    #[test]
+    fn test_read_fails_with_id_zero() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "key", "value").unwrap();
+
+        let result = read_credential(&file_path, "password123", 0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid"));
+    }
+
+    #[test]
+    fn test_read_fails_with_id_greater_than_count() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "key1", "value1").unwrap();
+        save_credential(&file_path, "password123", "key2", "value2").unwrap();
+
+        let result = read_credential(&file_path, "password123", 5);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid"));
+    }
+
+    #[test]
+    fn test_read_fails_with_wrong_password() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "correct123", "key", "value").unwrap();
+
+        let result = read_credential(&file_path, "wrong_password", 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_with_duplicate_keys() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "api_key", "first_value").unwrap();
+        save_credential(&file_path, "password123", "api_key", "second_value").unwrap();
+        save_credential(&file_path, "password123", "api_key", "third_value").unwrap();
+
+        let cred1 = read_credential(&file_path, "password123", 1).unwrap();
+        let cred2 = read_credential(&file_path, "password123", 2).unwrap();
+        let cred3 = read_credential(&file_path, "password123", 3).unwrap();
+
+        assert_eq!(cred1.value, "first_value");
+        assert_eq!(cred2.value, "second_value");
+        assert_eq!(cred3.value, "third_value");
     }
 }
