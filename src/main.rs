@@ -48,6 +48,17 @@ enum Commands {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let known = ["save","list","read","update","remove","env","mcp","-h","--help","-V","--version"];
+    if args.len() == 2 && !known.contains(&args[1].as_str()) {
+        let path = PathBuf::from(&args[1]);
+        if let Err(e) = lootbox::tui::run(path) {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let cli = Cli::parse();
 
     let result = match cli.command {
