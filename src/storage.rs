@@ -15,20 +15,22 @@ pub struct Credential {
 /// Binary file format:
 /// - Salt: 16 bytes
 /// - Nonce: 12 bytes
-/// - Encrypted data: remaining bytes
+/// - Encrypted data: remaining bytes (contains JSON array of credentials)
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
 
 /// Saves a credential to an encrypted file
+/// If file exists, validates password and appends the credential
+/// If file doesn't exist, creates a new file
 ///
 /// # Arguments
-/// * `file_path` - Path to the encrypted file (must not exist)
+/// * `file_path` - Path to the encrypted file
 /// * `password` - Password to encrypt the file (min 8 chars, validated)
 /// * `secret_key` - The credential key (required, non-empty)
 /// * `secret_value` - The credential value (required, non-empty)
 ///
 /// # Returns
-/// Ok(()) on success, Err on validation failure or file already exists
+/// Ok(()) on success, Err on validation failure or wrong password
 pub fn save_credential<P: AsRef<Path>>(
     file_path: P,
     password: &str,
@@ -42,20 +44,26 @@ pub fn save_credential<P: AsRef<Path>>(
     validate_secret_key(secret_key)?;
     validate_secret_value(secret_value)?;
 
-    // Check if file already exists
-    if file_path.exists() {
-        bail!("File already exists: {}", file_path.display());
-    }
-
-    // Create credential
-    let credential = Credential {
+    // Create new credential
+    let new_credential = Credential {
         key: secret_key.to_string(),
         value: secret_value.to_string(),
     };
 
-    // Serialize credential to JSON
-    let credential_json = serde_json::to_vec(&credential)
-        .context("Failed to serialize credential")?;
+    // Load existing credentials or start with empty list
+    let mut credentials = if file_path.exists() {
+        // Validate existing file and load credentials
+        list_credentials(file_path, password)?
+    } else {
+        Vec::new()
+    };
+
+    // Append new credential
+    credentials.push(new_credential);
+
+    // Serialize all credentials to JSON
+    let credentials_json = serde_json::to_vec(&credentials)
+        .context("Failed to serialize credentials")?;
 
     // Generate salt and derive key
     let salt = generate_salt();
@@ -63,7 +71,7 @@ pub fn save_credential<P: AsRef<Path>>(
 
     // Generate nonce and encrypt
     let nonce = generate_nonce();
-    let encrypted_data = encrypt(&credential_json, &key, &nonce)?;
+    let encrypted_data = encrypt(&credentials_json, &key, &nonce)?;
 
     // Create binary file content: salt (16 bytes) + nonce (12 bytes) + encrypted_data
     let mut file_content = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + encrypted_data.len());
@@ -87,15 +95,15 @@ pub fn save_credential<P: AsRef<Path>>(
     Ok(())
 }
 
-/// Reads and decrypts a credential from an encrypted file
+/// Reads and decrypts all credentials from an encrypted file
 ///
 /// # Arguments
 /// * `file_path` - Path to the encrypted file
 /// * `password` - Password to decrypt the file
 ///
 /// # Returns
-/// Ok(Credential) on success, Err on validation failure or decryption error
-pub fn list_credential<P: AsRef<Path>>(file_path: P, password: &str) -> Result<Credential> {
+/// Ok(Vec<Credential>) on success, Err on validation failure or decryption error
+pub fn list_credentials<P: AsRef<Path>>(file_path: P, password: &str) -> Result<Vec<Credential>> {
     let file_path = file_path.as_ref();
 
     // Validate password
@@ -132,22 +140,35 @@ pub fn list_credential<P: AsRef<Path>>(file_path: P, password: &str) -> Result<C
     // Decrypt data
     let decrypted_data = decrypt(encrypted_data, &key, &nonce)?;
 
-    // Deserialize credential
-    let credential: Credential = serde_json::from_slice(&decrypted_data)
+    // Deserialize credentials array
+    let credentials: Vec<Credential> = serde_json::from_slice(&decrypted_data)
         .context("Failed to parse decrypted credential data")?;
 
-    Ok(credential)
+    Ok(credentials)
 }
 
 /// Gets the display string for listing credentials
-/// Shows the key in plain text and the value masked with exactly 10 asterisks
+/// Shows all credentials with position IDs, keys in plain text, and values masked with 10 asterisks
+///
+/// Format: [n] Key: <key> Value: **********
 pub fn get_list_display<P: AsRef<Path>>(file_path: P, password: &str) -> Result<String> {
-    let credential = list_credential(file_path, password)?;
+    let credentials = list_credentials(file_path, password)?;
 
-    Ok(format!(
-        "Key: {}\nValue: **********",
-        credential.key
-    ))
+    let mut output = String::new();
+    for (index, credential) in credentials.iter().enumerate() {
+        let position = index + 1; // 1-indexed
+        output.push_str(&format!(
+            "[{}] Key: {} Value: **********\n",
+            position, credential.key
+        ));
+    }
+
+    // Remove trailing newline
+    if output.ends_with('\n') {
+        output.pop();
+    }
+
+    Ok(output)
 }
 
 #[cfg(test)]
@@ -160,27 +181,43 @@ mod tests {
     }
 
     #[test]
-    fn test_save_and_list_credential() {
+    fn test_save_and_list_single_credential() {
         let temp_dir = setup_test_dir();
         let file_path = temp_dir.path().join("test.enc");
 
         save_credential(&file_path, "password123", "my_key", "my_value").unwrap();
 
-        let credential = list_credential(&file_path, "password123").unwrap();
-        assert_eq!(credential.key, "my_key");
-        assert_eq!(credential.value, "my_value");
+        let credentials = list_credentials(&file_path, "password123").unwrap();
+        assert_eq!(credentials.len(), 1);
+        assert_eq!(credentials[0].key, "my_key");
+        assert_eq!(credentials[0].value, "my_value");
     }
 
     #[test]
-    fn test_save_fails_if_file_exists() {
+    fn test_save_multiple_credentials() {
         let temp_dir = setup_test_dir();
         let file_path = temp_dir.path().join("test.enc");
 
-        fs::write(&file_path, "existing").unwrap();
+        save_credential(&file_path, "password123", "key1", "value1").unwrap();
+        save_credential(&file_path, "password123", "key2", "value2").unwrap();
+        save_credential(&file_path, "password123", "key3", "value3").unwrap();
 
-        let result = save_credential(&file_path, "password123", "key", "value");
+        let credentials = list_credentials(&file_path, "password123").unwrap();
+        assert_eq!(credentials.len(), 3);
+        assert_eq!(credentials[0].key, "key1");
+        assert_eq!(credentials[1].key, "key2");
+        assert_eq!(credentials[2].key, "key3");
+    }
+
+    #[test]
+    fn test_save_fails_with_wrong_password_on_existing_file() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "correct123", "key1", "value1").unwrap();
+
+        let result = save_credential(&file_path, "wrong_password", "key2", "value2");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already exists"));
     }
 
     #[test]
@@ -190,12 +227,30 @@ mod tests {
 
         save_credential(&file_path, "correct123", "key", "value").unwrap();
 
-        let result = list_credential(&file_path, "wrong456789");
+        let result = list_credentials(&file_path, "wrong456789");
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_display_masks_value() {
+    fn test_display_shows_position_ids() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "key1", "value1").unwrap();
+        save_credential(&file_path, "password123", "key2", "value2").unwrap();
+
+        let display = get_list_display(&file_path, "password123").unwrap();
+        assert!(display.contains("[1]"));
+        assert!(display.contains("[2]"));
+        assert!(display.contains("key1"));
+        assert!(display.contains("key2"));
+        assert!(!display.contains("value1"));
+        assert!(!display.contains("value2"));
+        assert_eq!(display.matches('*').count(), 20); // 10 asterisks per credential × 2
+    }
+
+    #[test]
+    fn test_display_masks_values() {
         let temp_dir = setup_test_dir();
         let file_path = temp_dir.path().join("test.enc");
 

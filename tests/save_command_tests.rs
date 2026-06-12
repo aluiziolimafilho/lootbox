@@ -1,4 +1,4 @@
-use lootbox::{list_credential, save_credential};
+use lootbox::{list_credentials, save_credential};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -28,45 +28,127 @@ fn test_save_creates_new_file_when_not_exists() {
     assert!(file_path.exists());
     // And: File should not be empty
     assert!(fs::metadata(&file_path).unwrap().len() > 0);
+    // And: Should contain exactly one credential
+    let credentials = list_credentials(&file_path, "mypassword123").unwrap();
+    assert_eq!(credentials.len(), 1);
 }
 
 #[test]
-fn test_save_fails_when_file_already_exists() {
-    // Given: An existing file
+fn test_save_adds_to_existing_file() {
+    // Given: An existing encrypted file with one credential
     let temp_dir = setup_test_dir();
-    let file_path = get_test_file_path(&temp_dir, "existing.enc");
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
 
-    // Create an existing file
-    fs::write(&file_path, "existing content").expect("Failed to create test file");
-    assert!(file_path.exists());
+    save_credential(&file_path, password, "key1", "value1").unwrap();
 
-    // When: Attempting to save to the same file path
-    let result = save_credential(&file_path, "password123", "key", "value");
+    // When: Saving a second credential to the same file
+    let result = save_credential(&file_path, password, "key2", "value2");
 
-    // Then: Should return an error
+    // Then: Should succeed
+    assert!(result.is_ok());
+    // And: File should now contain both credentials
+    let credentials = list_credentials(&file_path, password).unwrap();
+    assert_eq!(credentials.len(), 2);
+    assert!(credentials.iter().any(|c| c.key == "key1" && c.value == "value1"));
+    assert!(credentials.iter().any(|c| c.key == "key2" && c.value == "value2"));
+}
+
+#[test]
+fn test_save_multiple_credentials_to_same_file() {
+    // Given: A new file path
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
+
+    // When: Saving multiple credentials sequentially
+    save_credential(&file_path, password, "aws_key", "aws_secret_123").unwrap();
+    save_credential(&file_path, password, "github_token", "ghp_token_456").unwrap();
+    save_credential(&file_path, password, "api_key", "sk_key_789").unwrap();
+
+    // Then: All credentials should be stored
+    let credentials = list_credentials(&file_path, password).unwrap();
+    assert_eq!(credentials.len(), 3);
+    assert!(credentials.iter().any(|c| c.key == "aws_key"));
+    assert!(credentials.iter().any(|c| c.key == "github_token"));
+    assert!(credentials.iter().any(|c| c.key == "api_key"));
+}
+
+#[test]
+fn test_save_fails_with_wrong_password_on_existing_file() {
+    // Given: An encrypted file with existing credentials
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let original_password = "correct123";
+
+    save_credential(&file_path, original_password, "key1", "value1").unwrap();
+
+    // When: Attempting to save with wrong password
+    let result = save_credential(&file_path, "wrong-password", "key2", "value2");
+
+    // Then: Should return an error (cannot decrypt existing file)
     assert!(result.is_err());
-    // And: Error message should mention file already exists
     let error_msg = result.unwrap_err().to_string();
-    assert!(error_msg.contains("already exists") || error_msg.contains("file exists"));
+    assert!(error_msg.contains("password") || error_msg.contains("decrypt"));
 }
 
 #[test]
-fn test_save_does_not_overwrite_existing_file() {
-    // Given: An existing file with content
+fn test_save_fails_with_corrupted_existing_file() {
+    // Given: A corrupted file
     let temp_dir = setup_test_dir();
-    let file_path = get_test_file_path(&temp_dir, "existing.enc");
-    let original_content = "important existing data";
+    let file_path = get_test_file_path(&temp_dir, "corrupted.enc");
 
-    fs::write(&file_path, original_content).expect("Failed to create test file");
+    // Write invalid/corrupted data
+    fs::write(&file_path, "this is not a valid encrypted file").unwrap();
 
-    // When: Attempting to save credentials to existing file
+    // When: Attempting to add a credential
     let result = save_credential(&file_path, "password123", "key", "value");
 
-    // Then: Should fail
+    // Then: Should return an error (cannot validate existing file)
     assert!(result.is_err());
-    // And: Original content should be preserved
-    let content = fs::read_to_string(&file_path).unwrap();
-    assert_eq!(content, original_content);
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("decrypt") || error_msg.contains("invalid") || error_msg.contains("corrupted"));
+}
+
+#[test]
+fn test_save_preserves_existing_credentials() {
+    // Given: An encrypted file with existing credentials
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "mypassword";
+
+    save_credential(&file_path, password, "original_key", "original_value").unwrap();
+
+    // When: Adding a new credential
+    save_credential(&file_path, password, "new_key", "new_value").unwrap();
+
+    // Then: Original credential should still exist
+    let credentials = list_credentials(&file_path, password).unwrap();
+    assert_eq!(credentials.len(), 2);
+    assert!(credentials.iter().any(|c| c.key == "original_key" && c.value == "original_value"));
+    assert!(credentials.iter().any(|c| c.key == "new_key" && c.value == "new_value"));
+}
+
+#[test]
+fn test_save_allows_duplicate_keys() {
+    // Given: An encrypted file with a credential
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+    let password = "password123";
+
+    save_credential(&file_path, password, "api_key", "old_value").unwrap();
+
+    // When: Saving with the same key but different value
+    let result = save_credential(&file_path, password, "api_key", "new_value");
+
+    // Then: Should succeed (allows duplicates - user manages them)
+    assert!(result.is_ok());
+    // And: Both entries should exist
+    let credentials = list_credentials(&file_path, password).unwrap();
+    let api_key_creds: Vec<_> = credentials.iter()
+        .filter(|c| c.key == "api_key")
+        .collect();
+    assert_eq!(api_key_creds.len(), 2);
 }
 
 #[test]
@@ -300,9 +382,8 @@ fn test_save_with_special_characters_in_key_and_value() {
     // Then: Should save successfully
     assert!(result.is_ok());
     // And: Should be retrievable correctly
-    let credential = list_credential(&file_path, "password123").unwrap();
-    assert_eq!(credential.key, special_key);
-    assert_eq!(credential.value, special_value);
+    let credentials = list_credentials(&file_path, "password123").unwrap();
+    assert!(credentials.iter().any(|c| c.key == special_key && c.value == special_value));
 }
 
 #[test]
@@ -317,9 +398,8 @@ fn test_save_with_unicode_characters() {
     // Then: Should save successfully
     assert!(result.is_ok());
     // And: Should be retrievable correctly
-    let credential = list_credential(&file_path, "password123").unwrap();
-    assert_eq!(credential.key, "日本語キー");
-    assert_eq!(credential.value, "中文值🔑");
+    let credentials = list_credentials(&file_path, "password123").unwrap();
+    assert!(credentials.iter().any(|c| c.key == "日本語キー" && c.value == "中文值🔑"));
 }
 
 #[test]
@@ -336,9 +416,8 @@ fn test_save_with_newlines_in_key_and_value() {
     // Then: Should save successfully
     assert!(result.is_ok());
     // And: Should be retrievable correctly
-    let credential = list_credential(&file_path, "password123").unwrap();
-    assert_eq!(credential.key, key_with_newline);
-    assert_eq!(credential.value, value_with_newline);
+    let credentials = list_credentials(&file_path, "password123").unwrap();
+    assert!(credentials.iter().any(|c| c.key == key_with_newline && c.value == value_with_newline));
 }
 
 #[test]
@@ -486,19 +565,19 @@ fn test_save_same_data_twice_creates_different_encrypted_files() {
 }
 
 #[test]
-fn test_save_can_decrypt_and_retrieve_saved_credential() {
+fn test_save_can_decrypt_and_retrieve_saved_credentials() {
     // Given: A new file path
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "my-secure-password";
-    let key = "api_key";
-    let value = "super-secret-value-123";
 
-    // When: Saving a credential
-    save_credential(&file_path, password, key, value).unwrap();
+    // When: Saving multiple credentials
+    save_credential(&file_path, password, "key1", "value1").unwrap();
+    save_credential(&file_path, password, "key2", "value2").unwrap();
 
-    // Then: Should be able to decrypt and retrieve the exact values
-    let credential = list_credential(&file_path, password).unwrap();
-    assert_eq!(credential.key, key);
-    assert_eq!(credential.value, value);
+    // Then: Should be able to decrypt and retrieve all values
+    let credentials = list_credentials(&file_path, password).unwrap();
+    assert_eq!(credentials.len(), 2);
+    assert!(credentials.iter().any(|c| c.key == "key1" && c.value == "value1"));
+    assert!(credentials.iter().any(|c| c.key == "key2" && c.value == "value2"));
 }
