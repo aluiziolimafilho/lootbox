@@ -43,6 +43,8 @@ enum Commands {
         /// The filename containing the encrypted credentials
         filename: PathBuf,
     },
+    /// Start an MCP server exposing all commands as tools (reads JSON-RPC from stdin)
+    Mcp,
 }
 
 fn main() {
@@ -55,6 +57,7 @@ fn main() {
         Commands::Update { filename } => handle_update(filename),
         Commands::Remove { filename } => handle_remove(filename),
         Commands::Env { filename } => handle_env(filename),
+        Commands::Mcp => handle_mcp(),
     };
 
     if let Err(e) = result {
@@ -251,4 +254,27 @@ fn handle_env(filename: PathBuf) -> anyhow::Result<()> {
 fn shell_escape(value: &str) -> String {
     // Replace every ' with '\'' (end quote, literal quote, reopen quote)
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn handle_mcp() -> anyhow::Result<()> {
+    use std::io::{BufRead, BufReader, Write};
+
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let response = lootbox::mcp::handle_mcp_message(&line);
+        if !response.is_empty() {
+            let mut out = stdout.lock();
+            writeln!(out, "{}", response)?;
+            out.flush()?;
+        }
+    }
+
+    Ok(())
 }
