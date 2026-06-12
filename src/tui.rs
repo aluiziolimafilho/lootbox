@@ -1,6 +1,6 @@
 use crate::storage::{
-    generate_env_vars, list_credentials, remove_credential, save_credential, update_credential,
-    Credential,
+    generate_env_vars, list_credentials, read_credential, remove_credential, save_credential,
+    update_credential, Credential,
 };
 use anyhow::Result;
 use crossterm::{
@@ -48,6 +48,7 @@ enum AppState {
         key: String,
         value: String,
         focus: Field,
+        value_visible: bool,
         error: Option<String>,
     },
     UpdateForm {
@@ -56,11 +57,21 @@ enum AppState {
         key: String,
         value: String,
         focus: Field,
+        value_visible: bool,
         error: Option<String>,
     },
     RemoveConfirm {
         id: String,
         error: Option<String>,
+    },
+    ReadSelect {
+        id: String,
+        error: Option<String>,
+    },
+    ReadView {
+        id: usize,
+        credential: Credential,
+        value_visible: bool,
     },
     EnvVars {
         output: String,
@@ -87,6 +98,12 @@ impl App {
 
     fn reload_credentials(&self) -> Result<Vec<Credential>> {
         list_credentials(&self.file_path, &self.password)
+    }
+
+    fn credential_list_state(&self) -> AppState {
+        AppState::CredentialList {
+            credentials: self.reload_credentials().unwrap_or_default(),
+        }
     }
 }
 
@@ -145,10 +162,10 @@ fn handle_key(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
         AppState::AddForm { .. } => handle_add(code, modifiers, app),
         AppState::UpdateForm { .. } => handle_update(code, modifiers, app),
         AppState::RemoveConfirm { .. } => handle_remove(code, app),
+        AppState::ReadSelect { .. } => handle_read_select(code, app),
+        AppState::ReadView { .. } => handle_read_view(code, app),
         AppState::EnvVars { .. } => {
-            app.state = AppState::CredentialList {
-                credentials: app.reload_credentials().unwrap_or_default(),
-            };
+            app.state = app.credential_list_state();
             Ok(false)
         }
     }
@@ -195,6 +212,7 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
                 key: String::new(),
                 value: String::new(),
                 focus: Field::Key,
+                value_visible: false,
                 error: None,
             };
         }
@@ -205,11 +223,18 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
                 key: String::new(),
                 value: String::new(),
                 focus: Field::Key,
+                value_visible: false,
                 error: None,
             };
         }
         KeyCode::Char('r') | KeyCode::Char('R') => {
             app.state = AppState::RemoveConfirm {
+                id: String::new(),
+                error: None,
+            };
+        }
+        KeyCode::Char('s') | KeyCode::Char('S') => {
+            app.state = AppState::ReadSelect {
                 id: String::new(),
                 error: None,
             };
@@ -236,11 +261,7 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
                     }
                     app.state = AppState::EnvVars { output };
                 }
-                Err(e) => {
-                    // show error inline by reloading list with a transient message not stored
-                    // (simplest: stay on list screen, nothing changes)
-                    let _ = e;
-                }
+                Err(_) => {}
             }
         }
         _ => {}
@@ -249,23 +270,33 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
 }
 
 fn handle_add(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<bool> {
-    let AppState::AddForm { ref mut key, ref mut value, ref mut focus, ref mut error } =
-        app.state
+    let AppState::AddForm {
+        ref mut key,
+        ref mut value,
+        ref mut focus,
+        ref mut value_visible,
+        ref mut error,
+    } = app.state
     else {
         return Ok(false);
     };
 
     match code {
         KeyCode::Esc => {
-            let credentials = list_credentials(&app.file_path, &app.password).unwrap_or_default();
-            app.state = AppState::CredentialList { credentials };
+            app.state = app.credential_list_state();
         }
         KeyCode::Tab => {
-            *focus = if *focus == Field::Key { Field::Value } else { Field::Key };
+            if *focus == Field::Key {
+                *focus = Field::Value;
+            } else {
+                *value_visible = !*value_visible;
+            }
             *error = None;
         }
         KeyCode::BackTab => {
-            *focus = if *focus == Field::Key { Field::Value } else { Field::Key };
+            if *focus == Field::Value {
+                *focus = Field::Key;
+            }
             *error = None;
         }
         KeyCode::Backspace => {
@@ -285,9 +316,7 @@ fn handle_add(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
             let v = value.clone();
             match save_credential(&app.file_path, &app.password, &k, &v) {
                 Ok(()) => {
-                    let credentials =
-                        list_credentials(&app.file_path, &app.password).unwrap_or_default();
-                    app.state = AppState::CredentialList { credentials };
+                    app.state = app.credential_list_state();
                 }
                 Err(e) => {
                     *error = Some(e.to_string());
@@ -314,6 +343,7 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
         ref mut key,
         ref mut value,
         ref mut focus,
+        ref mut value_visible,
         ref mut error,
     } = app.state
     else {
@@ -323,9 +353,7 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
     match step {
         UpdateStep::SelectId => match code {
             KeyCode::Esc => {
-                let credentials =
-                    list_credentials(&app.file_path, &app.password).unwrap_or_default();
-                app.state = AppState::CredentialList { credentials };
+                app.state = app.credential_list_state();
             }
             KeyCode::Backspace => {
                 id.pop();
@@ -348,16 +376,20 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
         },
         UpdateStep::EditFields => match code {
             KeyCode::Esc => {
-                let credentials =
-                    list_credentials(&app.file_path, &app.password).unwrap_or_default();
-                app.state = AppState::CredentialList { credentials };
+                app.state = app.credential_list_state();
             }
             KeyCode::Tab => {
-                *focus = if *focus == Field::Key { Field::Value } else { Field::Key };
+                if *focus == Field::Key {
+                    *focus = Field::Value;
+                } else {
+                    *value_visible = !*value_visible;
+                }
                 *error = None;
             }
             KeyCode::BackTab => {
-                *focus = if *focus == Field::Key { Field::Value } else { Field::Key };
+                if *focus == Field::Value {
+                    *focus = Field::Key;
+                }
                 *error = None;
             }
             KeyCode::Backspace => {
@@ -378,9 +410,7 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
                 let new_value = if value.is_empty() { None } else { Some(value.as_str()) };
                 match update_credential(&app.file_path, &app.password, pos, new_key, new_value) {
                     Ok(()) => {
-                        let credentials =
-                            list_credentials(&app.file_path, &app.password).unwrap_or_default();
-                        app.state = AppState::CredentialList { credentials };
+                        app.state = app.credential_list_state();
                     }
                     Err(e) => {
                         *error = Some(e.to_string());
@@ -408,8 +438,7 @@ fn handle_remove(code: KeyCode, app: &mut App) -> Result<bool> {
 
     match code {
         KeyCode::Esc => {
-            let credentials = list_credentials(&app.file_path, &app.password).unwrap_or_default();
-            app.state = AppState::CredentialList { credentials };
+            app.state = app.credential_list_state();
         }
         KeyCode::Backspace => {
             id.pop();
@@ -418,9 +447,7 @@ fn handle_remove(code: KeyCode, app: &mut App) -> Result<bool> {
         KeyCode::Enter => match id.parse::<usize>() {
             Ok(pos) => match remove_credential(&app.file_path, &app.password, pos) {
                 Ok(()) => {
-                    let credentials =
-                        list_credentials(&app.file_path, &app.password).unwrap_or_default();
-                    app.state = AppState::CredentialList { credentials };
+                    app.state = app.credential_list_state();
                 }
                 Err(e) => {
                     *error = Some(e.to_string());
@@ -439,6 +466,62 @@ fn handle_remove(code: KeyCode, app: &mut App) -> Result<bool> {
     Ok(false)
 }
 
+fn handle_read_select(code: KeyCode, app: &mut App) -> Result<bool> {
+    let AppState::ReadSelect { ref mut id, ref mut error } = app.state else {
+        return Ok(false);
+    };
+
+    match code {
+        KeyCode::Esc => {
+            app.state = app.credential_list_state();
+        }
+        KeyCode::Backspace => {
+            id.pop();
+            *error = None;
+        }
+        KeyCode::Enter => match id.parse::<usize>() {
+            Ok(pos) => match read_credential(&app.file_path, &app.password, pos) {
+                Ok(credential) => {
+                    app.state = AppState::ReadView {
+                        id: pos,
+                        credential,
+                        value_visible: false,
+                    };
+                }
+                Err(e) => {
+                    *error = Some(e.to_string());
+                }
+            },
+            Err(_) => {
+                *error = Some("ID must be a positive integer".to_string());
+            }
+        },
+        KeyCode::Char(c) if c.is_ascii_digit() => {
+            id.push(c);
+            *error = None;
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn handle_read_view(code: KeyCode, app: &mut App) -> Result<bool> {
+    let AppState::ReadView { ref mut value_visible, .. } = app.state else {
+        return Ok(false);
+    };
+
+    match code {
+        KeyCode::Tab => {
+            *value_visible = !*value_visible;
+        }
+        KeyCode::Esc => {
+            app.state = app.credential_list_state();
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
 // ─────────────────────────────────────────────────────────────────── drawing ─
 
 fn draw(f: &mut Frame, app: &App) {
@@ -447,17 +530,24 @@ fn draw(f: &mut Frame, app: &App) {
         AppState::CredentialList { credentials } => {
             draw_list(f, &app.file_path, credentials);
         }
-        AppState::AddForm { key, value, focus, error } => {
+        AppState::AddForm { key, value, focus, value_visible, error } => {
             draw_list_bg(f);
-            draw_add_form(f, key, value, *focus, error);
+            draw_add_form(f, key, value, *focus, *value_visible, error);
         }
-        AppState::UpdateForm { step, id, key, value, focus, error } => {
+        AppState::UpdateForm { step, id, key, value, focus, value_visible, error } => {
             draw_list_bg(f);
-            draw_update_form(f, *step, id, key, value, *focus, error);
+            draw_update_form(f, *step, id, key, value, *focus, *value_visible, error);
         }
         AppState::RemoveConfirm { id, error } => {
             draw_list_bg(f);
             draw_remove_form(f, id, error);
+        }
+        AppState::ReadSelect { id, error } => {
+            draw_list_bg(f);
+            draw_read_select(f, id, error);
+        }
+        AppState::ReadView { id, credential, value_visible } => {
+            draw_read_view(f, *id, credential, *value_visible);
         }
         AppState::EnvVars { output } => draw_env_vars(f, output),
     }
@@ -519,7 +609,6 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential]) {
         .constraints([Constraint::Min(3), Constraint::Length(3)])
         .split(area);
 
-    // Main block
     let title = format!(" LootBox — {} ", file_path.display());
     let block = Block::default()
         .title(title.as_str())
@@ -551,7 +640,6 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential]) {
 
     f.render_widget(table, chunks[0]);
 
-    // Bottom bar
     let bar = Paragraph::new(Line::from(vec![
         Span::styled(" [A]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         Span::styled("dd  ", Style::default().fg(Color::White)),
@@ -559,6 +647,8 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential]) {
         Span::styled("pdate  ", Style::default().fg(Color::White)),
         Span::styled("[R]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
         Span::styled("emove  ", Style::default().fg(Color::White)),
+        Span::styled("[S]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled("how  ", Style::default().fg(Color::White)),
         Span::styled("[E]", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
         Span::styled("nv  ", Style::default().fg(Color::White)),
         Span::styled("[Q]", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
@@ -581,14 +671,19 @@ fn draw_list_bg(f: &mut Frame) {
     f.render_widget(block, area);
 }
 
+fn mask(s: &str) -> String {
+    "●".repeat(s.chars().count())
+}
+
 fn draw_add_form(
     f: &mut Frame,
     key: &str,
     value: &str,
     focus: Field,
+    value_visible: bool,
     error: &Option<String>,
 ) {
-    let area = centered_rect(60, 50, f.area());
+    let area = centered_rect(60, 55, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default()
@@ -610,6 +705,12 @@ fn draw_add_form(
         Style::default().fg(Color::White)
     };
 
+    let displayed_value = if value_visible {
+        format!("{}_", value)
+    } else {
+        format!("{}_", mask(value))
+    };
+
     let mut lines = vec![
         Line::from(""),
         Line::from(vec![
@@ -619,7 +720,7 @@ fn draw_add_form(
         Line::from(""),
         Line::from(vec![
             Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{}_", value), val_style),
+            Span::styled(displayed_value, val_style),
         ]),
         Line::from(""),
     ];
@@ -632,10 +733,12 @@ fn draw_add_form(
         lines.push(Line::from(""));
     }
 
-    lines.push(Line::from(Span::styled(
-        "  Tab → switch field   Enter → save   Esc → cancel",
-        Style::default().fg(Color::DarkGray),
-    )));
+    let hint = if focus == Field::Key {
+        "  Tab → go to value   Enter → save   Esc → cancel"
+    } else {
+        "  Tab → show/hide value   BackTab → go to key   Enter → save   Esc → cancel"
+    };
+    lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
 
     f.render_widget(Paragraph::new(lines), inner);
 }
@@ -647,9 +750,10 @@ fn draw_update_form(
     key: &str,
     value: &str,
     focus: Field,
+    value_visible: bool,
     error: &Option<String>,
 ) {
-    let area = centered_rect(60, 55, f.area());
+    let area = centered_rect(60, 60, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default()
@@ -696,6 +800,12 @@ fn draw_update_form(
                 Style::default().fg(Color::White)
             };
 
+            let displayed_value = if value_visible {
+                format!("{}_", value)
+            } else {
+                format!("{}_", mask(value))
+            };
+
             lines.push(Line::from(Span::styled(
                 format!("  Editing ID: {id}"),
                 Style::default().fg(Color::DarkGray),
@@ -712,7 +822,7 @@ fn draw_update_form(
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
                 Span::styled("  New Value: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{}_", value), val_style),
+                Span::styled(displayed_value, val_style),
             ]));
             lines.push(Line::from(Span::styled(
                 "             (blank = keep current)",
@@ -726,10 +836,12 @@ fn draw_update_form(
                 )));
                 lines.push(Line::from(""));
             }
-            lines.push(Line::from(Span::styled(
-                "  Tab → switch field   Enter → save   Esc → cancel",
-                Style::default().fg(Color::DarkGray),
-            )));
+            let hint = if focus == Field::Key {
+                "  Tab → go to value   Enter → save   Esc → cancel"
+            } else {
+                "  Tab → show/hide value   BackTab → go to key   Enter → save   Esc → cancel"
+            };
+            lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
         }
     }
 
@@ -772,6 +884,94 @@ fn draw_remove_form(f: &mut Frame, id: &str, error: &Option<String>) {
         "  Enter → remove   Esc → cancel",
         Style::default().fg(Color::DarkGray),
     )));
+
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn draw_read_select(f: &mut Frame, id: &str, error: &Option<String>) {
+    let area = centered_rect(60, 40, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Show Credential ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Select ID: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{}_", id),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+    ];
+
+    if let Some(err) = error {
+        lines.push(Line::from(Span::styled(
+            format!("  {err}"),
+            Style::default().fg(Color::Red),
+        )));
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "  Enter → show   Esc → cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visible: bool) {
+    let area = f.area();
+
+    let block = Block::default()
+        .title(" Show Credential ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let displayed_value = if value_visible {
+        credential.value.clone()
+    } else {
+        mask(&credential.value)
+    };
+
+    let toggle_label = if value_visible { "hide" } else { "show" };
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ID:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{}", id),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Key:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(&credential.key, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(displayed_value, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  Tab → {toggle_label} value   Esc → back"),
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
 
     f.render_widget(Paragraph::new(lines), inner);
 }
