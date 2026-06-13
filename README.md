@@ -7,10 +7,10 @@ Secure, encrypted credential storage for the terminal. Each file holds one or mo
 - **AES-256-GCM encryption** with Argon2 password-based key derivation
 - **Interactive terminal UI** (ratatui) — arrow-key navigation, masked values, toggle reveal with Tab
 - **CLI subcommands** for scripting: `save`, `list`, `read`, `update`, `remove`, `env`
-- **Shell export** — `env` output is a valid shell script: `source <(lootbox env file.enc)`
+- **Shell export** — `env` exports one credential by ID as a shell `export` statement and copies it to the clipboard
 - **MCP server mode** — exposes all commands as tools for Claude Code and other AI agents
 - **File permissions 0o600** (owner-only read/write) on Unix
-- 274 automated tests
+- 271 automated tests
 
 ## Requirements
 
@@ -51,7 +51,7 @@ Enter your file password to unlock, then:
 | `U` | Update the highlighted credential |
 | `R` | Remove the highlighted credential |
 | `S` | Show the highlighted credential (value revealed with Tab) |
-| `E` | Export all credentials as shell `export` statements |
+| `E` | Export the highlighted credential as a shell `export` statement (copied to clipboard; Tab reveals value, C re-copies) |
 | `Q` / `Esc` | Quit |
 
 Secret values are masked as `●●●●●●` by default. Press **Tab** while editing or viewing to toggle visibility.
@@ -107,25 +107,19 @@ lootbox remove myfile.enc
 
 Credentials that follow the removed one shift down by one position.
 
-#### `env` — export as shell variables
+#### `env` — export one credential as a shell variable
 
 ```bash
 lootbox env myfile.enc
-# prompts: password (hidden, printed as a comment)
+# prompts: password, credential ID
 ```
 
-Prints `export KEY='value'` statements. Keys are uppercased with spaces replaced by underscores. Values are single-quoted and properly escaped for POSIX shells.
+Prints the credential as `export KEY='value'` and automatically copies the line to the clipboard. Keys are uppercased with spaces replaced by underscores. Values are single-quoted and POSIX-escaped.
 
-Load credentials directly into the current shell:
+Load it directly into the current shell:
 
 ```bash
 source <(lootbox env myfile.enc)
-```
-
-Inspect before loading:
-
-```bash
-lootbox env myfile.enc
 ```
 
 ---
@@ -156,7 +150,7 @@ Available tools:
 | `read_credential` | Read one credential by ID in plain text |
 | `update_credential` | Update key and/or value of a credential |
 | `remove_credential` | Delete a credential by ID |
-| `generate_env_vars` | Generate shell `export` statements |
+| `generate_env_vars` | Generate a shell `export` statement for one credential by ID |
 
 ---
 
@@ -206,7 +200,7 @@ cargo run -- myfile.enc       # TUI mode
 
 ### Tests
 
-274 tests across 7 integration test suites plus unit tests embedded in each module.
+271 tests across 7 integration test suites plus unit tests embedded in each module.
 
 ```bash
 cargo test                              # all tests
