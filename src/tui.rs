@@ -2,6 +2,7 @@ use crate::storage::{
     generate_env_vars, list_credentials, read_credential, remove_credential, save_credential,
     update_credential, Credential,
 };
+use crate::validation::validate_password;
 use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
@@ -36,9 +37,11 @@ enum UpdateStep {
 }
 
 enum AppState {
+    NewFileConfirm,
     PasswordInput {
         input: String,
         error: Option<String>,
+        is_new: bool,
     },
     CredentialList {
         credentials: Vec<Credential>,
@@ -87,14 +90,12 @@ struct App {
 
 impl App {
     fn new(file_path: PathBuf) -> Self {
-        Self {
-            file_path,
-            password: String::new(),
-            state: AppState::PasswordInput {
-                input: String::new(),
-                error: None,
-            },
-        }
+        let state = if file_path.exists() {
+            AppState::PasswordInput { input: String::new(), error: None, is_new: false }
+        } else {
+            AppState::NewFileConfirm
+        };
+        Self { file_path, password: String::new(), state }
     }
 
     fn reload_credentials(&self) -> Result<Vec<Credential>> {
@@ -159,6 +160,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, file_path: PathBu
 
 fn handle_key(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<bool> {
     match &app.state {
+        AppState::NewFileConfirm => handle_new_file_confirm(code, app),
         AppState::PasswordInput { .. } => handle_password(code, app),
         AppState::CredentialList { .. } => handle_list(code, app),
         AppState::AddForm { .. } => handle_add(code, modifiers, app),
@@ -169,33 +171,75 @@ fn handle_key(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
     }
 }
 
+fn handle_new_file_confirm(code: KeyCode, app: &mut App) -> Result<bool> {
+    match code {
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+            app.state = AppState::PasswordInput {
+                input: String::new(),
+                error: None,
+                is_new: true,
+            };
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc | KeyCode::Char('q') => {
+            return Ok(true);
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
 fn handle_password(code: KeyCode, app: &mut App) -> Result<bool> {
-    let AppState::PasswordInput { ref mut input, ref mut error } = app.state else {
+    let AppState::PasswordInput { ref mut input, ref mut error, is_new } = app.state else {
         return Ok(false);
     };
+    let is_new = is_new;
 
     match code {
-        KeyCode::Esc | KeyCode::Char('q') => return Ok(true),
+        KeyCode::Esc => {
+            if is_new {
+                app.state = AppState::NewFileConfirm;
+            } else {
+                return Ok(true);
+            }
+        }
+        KeyCode::Char('q') if !is_new => return Ok(true),
         KeyCode::Backspace => {
-            input.pop();
-            *error = None;
+            if let AppState::PasswordInput { ref mut input, ref mut error, .. } = app.state {
+                input.pop();
+                *error = None;
+            }
         }
         KeyCode::Enter => {
             let password = input.clone();
-            match list_credentials(&app.file_path, &password) {
-                Ok(credentials) => {
-                    app.password = password;
-                    app.state = AppState::CredentialList { credentials, selected: 0 };
+            if is_new {
+                match validate_password(&password) {
+                    Ok(()) => {
+                        app.password = password;
+                        app.state = AppState::CredentialList { credentials: vec![], selected: 0 };
+                    }
+                    Err(e) => {
+                        *error = Some(e.to_string());
+                        input.clear();
+                    }
                 }
-                Err(e) => {
-                    *error = Some(e.to_string());
-                    input.clear();
+            } else {
+                match list_credentials(&app.file_path, &password) {
+                    Ok(credentials) => {
+                        app.password = password;
+                        app.state = AppState::CredentialList { credentials, selected: 0 };
+                    }
+                    Err(e) => {
+                        *error = Some(e.to_string());
+                        input.clear();
+                    }
                 }
             }
         }
         KeyCode::Char(c) => {
-            input.push(c);
-            *error = None;
+            if let AppState::PasswordInput { ref mut input, ref mut error, .. } = app.state {
+                input.push(c);
+                *error = None;
+            }
         }
         _ => {}
     }
@@ -535,7 +579,10 @@ fn handle_env_vars(code: KeyCode, app: &mut App) -> Result<bool> {
 
 fn draw(f: &mut Frame, app: &App) {
     match &app.state {
-        AppState::PasswordInput { input, error } => draw_password(f, &app.file_path, input, error),
+        AppState::NewFileConfirm => draw_new_file_confirm(f, &app.file_path),
+        AppState::PasswordInput { input, error, is_new } => {
+            draw_password(f, &app.file_path, input, error, *is_new);
+        }
         AppState::CredentialList { credentials, selected } => {
             draw_list(f, &app.file_path, credentials, *selected);
         }
@@ -560,11 +607,45 @@ fn draw(f: &mut Frame, app: &App) {
     }
 }
 
-fn draw_password(f: &mut Frame, file_path: &PathBuf, input: &str, error: &Option<String>) {
+fn draw_new_file_confirm(f: &mut Frame, file_path: &PathBuf) {
     let area = f.area();
 
     let block = Block::default()
         .title(" LootBox ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    f.render_widget(block, area);
+
+    let inner = centered_rect(60, 40, area);
+    let file_name = file_path.display().to_string();
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("File: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(&file_name, Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  File does not exist. Create a new vault?",
+            Style::default().fg(Color::White),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  [Y]es / Enter → create   [N]o / Esc → quit",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    f.render_widget(Paragraph::new(lines).alignment(Alignment::Left), inner);
+}
+
+fn draw_password(f: &mut Frame, file_path: &PathBuf, input: &str, error: &Option<String>, is_new: bool) {
+    let area = f.area();
+
+    let title = if is_new { " LootBox — New Vault " } else { " LootBox " };
+    let block = Block::default()
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
     f.render_widget(block, area);
@@ -599,10 +680,12 @@ fn draw_password(f: &mut Frame, file_path: &PathBuf, input: &str, error: &Option
         lines.push(Line::from(""));
     }
 
-    lines.push(Line::from(Span::styled(
-        "  Enter → unlock   Esc → quit",
-        Style::default().fg(Color::DarkGray),
-    )));
+    let hint = if is_new {
+        "  Enter → set password   Esc → back"
+    } else {
+        "  Enter → unlock   Esc → quit"
+    };
+    lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
 
     let para = Paragraph::new(lines).alignment(Alignment::Left);
     f.render_widget(para, inner);
