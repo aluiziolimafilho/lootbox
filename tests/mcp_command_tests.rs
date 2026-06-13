@@ -861,7 +861,8 @@ fn test_mcp_tool_generate_env_vars_returns_export_statements() {
         "generate_env_vars",
         json!({
             "filename": file_path.to_str().unwrap(),
-            "password": "password123"
+            "password": "password123",
+            "id": 1
         }),
     );
 
@@ -881,12 +882,14 @@ fn test_mcp_tool_generate_env_vars_reports_invalid_keys_separately() {
     save_credential(&file_path, "password123", "valid key", "ok").unwrap();
     save_credential(&file_path, "password123", "bad-key", "ok").unwrap();
 
+    // Select the invalid key credential (ID 2)
     let request = build_tool_call(
         8,
         "generate_env_vars",
         json!({
             "filename": file_path.to_str().unwrap(),
-            "password": "password123"
+            "password": "password123",
+            "id": 2
         }),
     );
 
@@ -894,7 +897,6 @@ fn test_mcp_tool_generate_env_vars_reports_invalid_keys_separately() {
     let parsed = parse_response(&response);
 
     let text = parsed["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(text.contains("VALID_KEY"));
     assert!(text.contains("bad-key"));
 }
 
@@ -910,7 +912,30 @@ fn test_mcp_tool_generate_env_vars_fails_with_wrong_password() {
         "generate_env_vars",
         json!({
             "filename": file_path.to_str().unwrap(),
-            "password": "wrong456789"
+            "password": "wrong456789",
+            "id": 1
+        }),
+    );
+
+    let response = handle_mcp_message(&request);
+    let parsed = parse_response(&response);
+
+    assert_eq!(parsed["result"]["isError"], true);
+}
+
+#[test]
+fn test_mcp_tool_generate_env_vars_fails_without_id() {
+    let temp_dir = setup_test_dir();
+    let file_path = get_test_file_path(&temp_dir, "credentials.enc");
+
+    save_credential(&file_path, "password123", "key", "value").unwrap();
+
+    let request = build_tool_call(
+        8,
+        "generate_env_vars",
+        json!({
+            "filename": file_path.to_str().unwrap(),
+            "password": "password123"
         }),
     );
 

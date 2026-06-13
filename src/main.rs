@@ -235,12 +235,32 @@ fn handle_remove(filename: PathBuf) -> anyhow::Result<()> {
 fn handle_env(filename: PathBuf) -> anyhow::Result<()> {
     let password = rpassword::prompt_password("# Enter file password: ")?;
 
-    let result = generate_env_vars(&filename, &password)?;
+    print!("Enter credential ID: ");
+    io::stdout().flush()?;
+    let mut id_input = String::new();
+    io::stdin().read_line(&mut id_input)?;
+    let credential_id: usize = id_input
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
 
-    println!("# Exporting credentials from: {}", filename.display());
+    let result = generate_env_vars(&filename, &password, credential_id)?;
 
+    println!("# Exporting credential from: {}", filename.display());
+
+    let mut export_lines = String::new();
     for entry in &result.created {
-        println!("export {}={}", entry.env_name, shell_escape(&entry.value));
+        let line = format!("export {}={}", entry.env_name, shell_escape(&entry.value));
+        println!("{}", line);
+        export_lines.push_str(&line);
+        export_lines.push('\n');
+    }
+
+    if !export_lines.is_empty() {
+        match arboard::Clipboard::new().and_then(|mut c| c.set_text(export_lines.trim_end().to_string())) {
+            Ok(()) => println!("# Copied to clipboard"),
+            Err(_) => eprintln!("# Warning: clipboard unavailable"),
+        }
     }
 
     if !result.created.is_empty() {

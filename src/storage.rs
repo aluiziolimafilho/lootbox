@@ -396,7 +396,7 @@ pub struct EnvVarsResult {
     pub invalid: Vec<InvalidEntry>,
 }
 
-/// Reads all credentials from an encrypted file and maps each one to an environment variable.
+/// Reads a single credential by position ID and maps it to an environment variable.
 ///
 /// Transformation rules for the env var name:
 ///   - Letters are uppercased
@@ -407,58 +407,39 @@ pub struct EnvVarsResult {
 ///   - Its transformed name contains a character outside `[A-Z0-9_]`
 ///   - Its transformed name starts with a digit
 ///   - Its value contains a null byte (`\0`)
-///   - Its transformed name duplicates one already created (first wins)
-pub fn generate_env_vars<P: AsRef<Path>>(file_path: P, password: &str) -> Result<EnvVarsResult> {
-    let credentials = list_credentials(file_path, password)?;
+pub fn generate_env_vars<P: AsRef<Path>>(
+    file_path: P,
+    password: &str,
+    credential_id: usize,
+) -> Result<EnvVarsResult> {
+    let credential = read_credential(file_path, password, credential_id)?;
 
     let mut created: Vec<EnvEntry> = Vec::new();
     let mut invalid: Vec<InvalidEntry> = Vec::new();
 
-    for credential in credentials {
-        let env_name = credential
-            .key
-            .to_uppercase()
-            .replace(' ', "_");
+    let env_name = credential.key.to_uppercase().replace(' ', "_");
 
-        // Validate env var name: must match [A-Z0-9_]+ and not start with a digit
-        let invalid_char = env_name
-            .chars()
-            .find(|c| !matches!(c, 'A'..='Z' | '0'..='9' | '_'));
+    let invalid_char = env_name
+        .chars()
+        .find(|c| !matches!(c, 'A'..='Z' | '0'..='9' | '_'));
 
-        if let Some(ch) = invalid_char {
-            invalid.push(InvalidEntry {
-                original_key: credential.key,
-                reason: format!("invalid character '{}' in environment variable name", ch),
-            });
-            continue;
-        }
-
-        if env_name.starts_with(|c: char| c.is_ascii_digit()) {
-            invalid.push(InvalidEntry {
-                original_key: credential.key,
-                reason: "environment variable name cannot start with a digit".to_string(),
-            });
-            continue;
-        }
-
-        // Reject duplicates — first mapping wins
-        if created.iter().any(|e| e.env_name == env_name) {
-            invalid.push(InvalidEntry {
-                original_key: credential.key,
-                reason: format!("duplicate environment variable name '{}' already exists", env_name),
-            });
-            continue;
-        }
-
-        // Reject values containing null bytes — invalid in POSIX shell environment variables
-        if credential.value.contains('\0') {
-            invalid.push(InvalidEntry {
-                original_key: credential.key,
-                reason: "value contains a null byte, which is not valid in shell environment variables".to_string(),
-            });
-            continue;
-        }
-
+    if let Some(ch) = invalid_char {
+        invalid.push(InvalidEntry {
+            original_key: credential.key,
+            reason: format!("invalid character '{}' in environment variable name", ch),
+        });
+    } else if env_name.starts_with(|c: char| c.is_ascii_digit()) {
+        invalid.push(InvalidEntry {
+            original_key: credential.key,
+            reason: "environment variable name cannot start with a digit".to_string(),
+        });
+    } else if credential.value.contains('\0') {
+        invalid.push(InvalidEntry {
+            original_key: credential.key,
+            reason: "value contains a null byte, which is not valid in shell environment variables"
+                .to_string(),
+        });
+    } else {
         created.push(EnvEntry {
             original_key: credential.key,
             env_name,

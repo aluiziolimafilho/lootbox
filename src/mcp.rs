@@ -134,14 +134,15 @@ fn handle_tools_list(id: &Value) -> String {
                 },
                 {
                     "name": "generate_env_vars",
-                    "description": "Generate shell export statements from all credentials. Keys are uppercased with spaces replaced by underscores. Invalid keys and null-byte values are reported as skipped.",
+                    "description": "Generate a shell export statement for a single credential by its 1-based position ID. The key is uppercased with spaces replaced by underscores. Invalid keys and null-byte values are reported as skipped.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "filename": { "type": "string", "description": "Path to the encrypted credentials file" },
-                            "password": { "type": "string", "description": "File password" }
+                            "filename": { "type": "string",  "description": "Path to the encrypted credentials file" },
+                            "password": { "type": "string",  "description": "File password" },
+                            "id":       { "type": "integer", "description": "1-based position ID of the credential to export" }
                         },
-                        "required": ["filename", "password"]
+                        "required": ["filename", "password", "id"]
                     }
                 }
             ]
@@ -302,8 +303,12 @@ fn tool_generate_env_vars(id: &Value, args: &Value) -> String {
         Some(p) => p,
         None => return tool_error_response(id, "Missing required argument: password"),
     };
+    let credential_id = match args["id"].as_u64() {
+        Some(n) => n as usize,
+        None => return tool_error_response(id, "Missing required argument: id (must be a positive integer)"),
+    };
 
-    match generate_env_vars(Path::new(filename), password) {
+    match generate_env_vars(Path::new(filename), password, credential_id) {
         Ok(result) => {
             let mut output = String::new();
 

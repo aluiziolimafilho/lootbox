@@ -71,7 +71,11 @@ enum AppState {
         value_visible: bool,
     },
     EnvVars {
-        output: String,
+        env_name: String,
+        value: String,
+        value_visible: bool,
+        clipboard_status: Option<String>,
+        error: Option<String>,
     },
 }
 
@@ -161,10 +165,7 @@ fn handle_key(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
         AppState::UpdateForm { .. } => handle_update(code, modifiers, app),
         AppState::RemoveConfirm { .. } => handle_remove(code, app),
         AppState::ReadView { .. } => handle_read_view(code, app),
-        AppState::EnvVars { .. } => {
-            app.state = app.credential_list_state();
-            Ok(false)
-        }
+        AppState::EnvVars { .. } => handle_env_vars(code, app),
     }
 }
 
@@ -276,28 +277,38 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
             }
         }
         KeyCode::Char('e') | KeyCode::Char('E') => {
-            match generate_env_vars(&app.file_path, &app.password) {
-                Ok(result) => {
-                    let mut output = String::new();
-                    for entry in &result.created {
-                        let escaped = entry.value.replace('\'', "'\\''");
-                        output.push_str(&format!("export {}='{}'\n", entry.env_name, escaped));
-                    }
-                    if !result.invalid.is_empty() {
-                        output.push_str("\n# Skipped:\n");
-                        for entry in &result.invalid {
-                            output.push_str(&format!(
-                                "#   {} - {}\n",
-                                entry.original_key, entry.reason
-                            ));
+            if cred_count > 0 {
+                let pos = selected + 1;
+                match generate_env_vars(&app.file_path, &app.password, pos) {
+                    Ok(result) => {
+                        if let Some(entry) = result.created.first() {
+                            let escaped = entry.value.replace('\'', "'\\''");
+                            let export_line = format!("export {}='{}'", entry.env_name, escaped);
+                            let clipboard_status = match arboard::Clipboard::new()
+                                .and_then(|mut c| c.set_text(export_line))
+                            {
+                                Ok(()) => Some("Copied to clipboard!".to_string()),
+                                Err(_) => Some("Clipboard unavailable".to_string()),
+                            };
+                            app.state = AppState::EnvVars {
+                                env_name: entry.env_name.clone(),
+                                value: entry.value.clone(),
+                                value_visible: false,
+                                clipboard_status,
+                                error: None,
+                            };
+                        } else if let Some(inv) = result.invalid.first() {
+                            app.state = AppState::EnvVars {
+                                env_name: String::new(),
+                                value: String::new(),
+                                value_visible: false,
+                                clipboard_status: None,
+                                error: Some(inv.reason.clone()),
+                            };
                         }
                     }
-                    if output.is_empty() {
-                        output = "(no valid environment variables)".to_string();
-                    }
-                    app.state = AppState::EnvVars { output };
+                    Err(_) => {}
                 }
-                Err(_) => {}
             }
         }
         _ => {}
@@ -485,6 +496,41 @@ fn handle_read_view(code: KeyCode, app: &mut App) -> Result<bool> {
     Ok(false)
 }
 
+fn handle_env_vars(code: KeyCode, app: &mut App) -> Result<bool> {
+    let AppState::EnvVars {
+        ref env_name,
+        ref value,
+        ref mut value_visible,
+        ref mut clipboard_status,
+        ..
+    } = app.state
+    else {
+        return Ok(false);
+    };
+
+    match code {
+        KeyCode::Tab => {
+            *value_visible = !*value_visible;
+        }
+        KeyCode::Char('c') | KeyCode::Char('C') => {
+            if !env_name.is_empty() {
+                let escaped = value.replace('\'', "'\\''");
+                let export_line = format!("export {}='{}'", env_name, escaped);
+                *clipboard_status = match arboard::Clipboard::new()
+                    .and_then(|mut c| c.set_text(export_line))
+                {
+                    Ok(()) => Some("Copied to clipboard!".to_string()),
+                    Err(_) => Some("Clipboard unavailable".to_string()),
+                };
+            }
+        }
+        _ => {
+            app.state = app.credential_list_state();
+        }
+    }
+    Ok(false)
+}
+
 // ─────────────────────────────────────────────────────────────────── drawing ─
 
 fn draw(f: &mut Frame, app: &App) {
@@ -508,7 +554,9 @@ fn draw(f: &mut Frame, app: &App) {
         AppState::ReadView { id, credential, value_visible } => {
             draw_read_view(f, *id, credential, *value_visible);
         }
-        AppState::EnvVars { output } => draw_env_vars(f, output),
+        AppState::EnvVars { env_name, value, value_visible, clipboard_status, error } => {
+            draw_env_vars(f, env_name, value, *value_visible, clipboard_status, error);
+        }
     }
 }
 
@@ -872,27 +920,69 @@ fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visib
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-fn draw_env_vars(f: &mut Frame, output: &str) {
+fn draw_env_vars(
+    f: &mut Frame,
+    env_name: &str,
+    value: &str,
+    value_visible: bool,
+    clipboard_status: &Option<String>,
+    error: &Option<String>,
+) {
     let area = f.area();
 
     let block = Block::default()
-        .title(" Environment Variables — press any key to go back ")
+        .title(" Environment Variable ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Magenta));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let lines: Vec<Line> = output
-        .lines()
-        .map(|l| {
-            if l.starts_with('#') {
-                Line::from(Span::styled(l, Style::default().fg(Color::DarkGray)))
+    let mut lines = vec![Line::from("")];
+
+    if let Some(err) = error {
+        lines.push(Line::from(Span::styled(
+            format!("  Error: {}", err),
+            Style::default().fg(Color::Red),
+        )));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Press any key to go back",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        let displayed_value = if value_visible {
+            value.replace('\'', "'\\''")
+        } else {
+            mask(value)
+        };
+        let export_line = format!("  export {}='{}'", env_name, displayed_value);
+
+        lines.push(Line::from(Span::styled(
+            export_line,
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+
+        if let Some(status) = clipboard_status {
+            let status_style = if status.contains("unavailable") {
+                Style::default().fg(Color::Yellow)
             } else {
-                Line::from(Span::styled(l, Style::default().fg(Color::Green)))
-            }
-        })
-        .collect();
+                Style::default().fg(Color::DarkGray)
+            };
+            lines.push(Line::from(Span::styled(
+                format!("  # {}", status),
+                status_style,
+            )));
+            lines.push(Line::from(""));
+        }
+
+        let toggle_label = if value_visible { "hide value" } else { "show value" };
+        lines.push(Line::from(Span::styled(
+            format!("  Tab → {}   C → copy again   Esc → back", toggle_label),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
 
     f.render_widget(Paragraph::new(lines), inner);
 }
