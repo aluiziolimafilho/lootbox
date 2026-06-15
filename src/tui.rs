@@ -1,6 +1,6 @@
 use crate::storage::{
-    generate_env_vars, list_credentials, read_credential, remove_credential, save_credential,
-    update_credential, Credential,
+    export_credentials_to_csv, generate_env_vars, import_credentials_from_csv, list_credentials,
+    read_credential, remove_credential, save_credential, update_credential, Credential,
 };
 use crate::validation::validate_password;
 use anyhow::Result;
@@ -79,6 +79,16 @@ enum AppState {
         value: String,
         value_visible: bool,
         clipboard_status: Option<String>,
+        error: Option<String>,
+    },
+    ExportCsv {
+        path_input: String,
+        status: Option<String>,
+        error: Option<String>,
+    },
+    ImportCsv {
+        path_input: String,
+        status: Option<String>,
         error: Option<String>,
     },
 }
@@ -169,6 +179,8 @@ fn handle_key(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
         AppState::RemoveConfirm { .. } => handle_remove(code, app),
         AppState::ReadView { .. } => handle_read_view(code, app),
         AppState::EnvVars { .. } => handle_env_vars(code, app),
+        AppState::ExportCsv { .. } => handle_export_csv_form(code, app),
+        AppState::ImportCsv { .. } => handle_import_csv_form(code, app),
     }
 }
 
@@ -356,6 +368,20 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
                     Err(_) => {}
                 }
             }
+        }
+        KeyCode::Char('x') | KeyCode::Char('X') => {
+            app.state = AppState::ExportCsv {
+                path_input: String::new(),
+                status: None,
+                error: None,
+            };
+        }
+        KeyCode::Char('i') | KeyCode::Char('I') => {
+            app.state = AppState::ImportCsv {
+                path_input: String::new(),
+                status: None,
+                error: None,
+            };
         }
         _ => {}
     }
@@ -595,6 +621,70 @@ fn handle_env_vars(code: KeyCode, app: &mut App) -> Result<bool> {
     Ok(false)
 }
 
+fn handle_export_csv_form(code: KeyCode, app: &mut App) -> Result<bool> {
+    let AppState::ExportCsv { ref mut path_input, ref mut status, ref mut error } = app.state else {
+        return Ok(false);
+    };
+
+    if status.is_some() {
+        app.state = app.credential_list_state();
+        return Ok(false);
+    }
+
+    match code {
+        KeyCode::Esc => { app.state = app.credential_list_state(); }
+        KeyCode::Backspace => {
+            path_input.pop();
+            *error = None;
+        }
+        KeyCode::Enter => {
+            let path = PathBuf::from(path_input.trim());
+            match export_credentials_to_csv(&app.file_path, &app.password, &path) {
+                Ok(()) => { *status = Some(format!("Exported to {}", path.display())); }
+                Err(e) => { *error = Some(e.to_string()); }
+            }
+        }
+        KeyCode::Char(c) => {
+            path_input.push(c);
+            *error = None;
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn handle_import_csv_form(code: KeyCode, app: &mut App) -> Result<bool> {
+    let AppState::ImportCsv { ref mut path_input, ref mut status, ref mut error } = app.state else {
+        return Ok(false);
+    };
+
+    if status.is_some() {
+        app.state = app.credential_list_state();
+        return Ok(false);
+    }
+
+    match code {
+        KeyCode::Esc => { app.state = app.credential_list_state(); }
+        KeyCode::Backspace => {
+            path_input.pop();
+            *error = None;
+        }
+        KeyCode::Enter => {
+            let path = PathBuf::from(path_input.trim());
+            match import_credentials_from_csv(&app.file_path, &app.password, &path) {
+                Ok(count) => { *status = Some(format!("Imported {} credential(s).", count)); }
+                Err(e) => { *error = Some(e.to_string()); }
+            }
+        }
+        KeyCode::Char(c) => {
+            path_input.push(c);
+            *error = None;
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
 // ─────────────────────────────────────────────────────────────────── drawing ─
 
 fn draw(f: &mut Frame, app: &App) {
@@ -623,6 +713,22 @@ fn draw(f: &mut Frame, app: &App) {
         }
         AppState::EnvVars { env_name, value, value_visible, clipboard_status, error } => {
             draw_env_vars(f, env_name, value, *value_visible, clipboard_status, error);
+        }
+        AppState::ExportCsv { path_input, status, error } => {
+            draw_list_bg(f);
+            draw_csv_form(
+                f, "Export CSV", Color::Yellow, path_input,
+                status.as_deref(), error.as_deref(),
+                "Enter CSV file path to write to",
+            );
+        }
+        AppState::ImportCsv { path_input, status, error } => {
+            draw_list_bg(f);
+            draw_csv_form(
+                f, "Import CSV", Color::Cyan, path_input,
+                status.as_deref(), error.as_deref(),
+                "Enter CSV file path to read from",
+            );
         }
     }
 }
@@ -766,6 +872,10 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential], sel
         Span::styled("how  ", Style::default().fg(Color::White)),
         Span::styled("[E]", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
         Span::styled("nv  ", Style::default().fg(Color::White)),
+        Span::styled("[X]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled("port CSV  ", Style::default().fg(Color::White)),
+        Span::styled("[I]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled("mport CSV  ", Style::default().fg(Color::White)),
         Span::styled("[Q]", Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
         Span::styled("uit  ", Style::default().fg(Color::White)),
         Span::styled("↑↓ scroll", Style::default().fg(Color::DarkGray)),
@@ -1119,4 +1229,65 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn draw_csv_form(
+    f: &mut Frame,
+    title: &str,
+    color: Color,
+    path_input: &str,
+    status: Option<&str>,
+    error: Option<&str>,
+    prompt: &str,
+) {
+    let area = centered_rect(60, 40, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(format!(" {title} "))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(color));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {prompt}:"),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {path_input}_"),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    if let Some(s) = status {
+        lines.push(Line::from(Span::styled(
+            format!("  {s}"),
+            Style::default().fg(Color::Green),
+        )));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Press any key to return",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        if let Some(e) = error {
+            lines.push(Line::from(Span::styled(
+                format!("  {e}"),
+                Style::default().fg(Color::Red),
+            )));
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(Span::styled(
+            "  Enter → confirm   Esc → cancel",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    f.render_widget(Paragraph::new(lines), inner);
 }

@@ -52,6 +52,8 @@ Enter your file password to unlock, then:
 | `R` | Remove the highlighted credential |
 | `S` | Show the highlighted credential (Tab reveals value, K copies key, V copies value) |
 | `E` | Export the highlighted credential as a shell `export` statement (copied to clipboard; Tab reveals value, C re-copies) |
+| `X` | Export all credentials to a CSV file (prompts for output path) |
+| `I` | Import credentials from a CSV file (prompts for input path) |
 | `Q` / `Esc` | Quit |
 
 Secret values are masked as `●●●●●●` by default. Press **Tab** while editing or viewing to toggle visibility.
