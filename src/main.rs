@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use lootbox::{generate_env_vars, get_list_display, read_credential, remove_credential, save_credential, update_credential};
+use lootbox::{export_credentials_to_csv, generate_env_vars, get_list_display, import_credentials_from_csv, read_credential, remove_credential, save_credential, update_credential};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -43,13 +43,27 @@ enum Commands {
         /// The filename containing the encrypted credentials
         filename: PathBuf,
     },
+    /// Export all credentials to a CSV file (header: key,value)
+    ExportCsv {
+        /// Path to the encrypted credentials file
+        filename: PathBuf,
+        /// Path to write the CSV output
+        csv_file: PathBuf,
+    },
+    /// Import credentials from a CSV file into the encrypted vault
+    ImportCsv {
+        /// Path to the encrypted credentials file
+        filename: PathBuf,
+        /// Path to the CSV file to read (must have header: key,value)
+        csv_file: PathBuf,
+    },
     /// Start an MCP server exposing all commands as tools (reads JSON-RPC from stdin)
     Mcp,
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let known = ["save","list","read","update","remove","env","mcp","-h","--help","-V","--version"];
+    let known = ["save","list","read","update","remove","env","export-csv","import-csv","mcp","-h","--help","-V","--version"];
     if args.len() == 2 && !known.contains(&args[1].as_str()) {
         let path = PathBuf::from(&args[1]);
         if let Err(e) = lootbox::tui::run(path) {
@@ -68,6 +82,8 @@ fn main() {
         Commands::Update { filename } => handle_update(filename),
         Commands::Remove { filename } => handle_remove(filename),
         Commands::Env { filename } => handle_env(filename),
+        Commands::ExportCsv { filename, csv_file } => handle_export_csv(filename, csv_file),
+        Commands::ImportCsv { filename, csv_file } => handle_import_csv(filename, csv_file),
         Commands::Mcp => handle_mcp(),
     };
 
@@ -277,6 +293,20 @@ fn handle_env(filename: PathBuf) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn handle_export_csv(filename: PathBuf, csv_file: PathBuf) -> anyhow::Result<()> {
+    let password = rpassword::prompt_password("Enter file password: ")?;
+    export_credentials_to_csv(&filename, &password, &csv_file)?;
+    println!("Exported to {}", csv_file.display());
+    Ok(())
+}
+
+fn handle_import_csv(filename: PathBuf, csv_file: PathBuf) -> anyhow::Result<()> {
+    let password = rpassword::prompt_password("Enter file password: ")?;
+    let count = import_credentials_from_csv(&filename, &password, &csv_file)?;
+    println!("Imported {} credential(s).", count);
     Ok(())
 }
 

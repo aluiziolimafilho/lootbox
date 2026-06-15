@@ -450,6 +450,145 @@ pub fn generate_env_vars<P: AsRef<Path>>(
     Ok(EnvVarsResult { created, invalid })
 }
 
+// ============================================================================
+// CSV helpers
+// ============================================================================
+
+/// Wraps a CSV field in double quotes and escapes embedded double-quotes as `""`.
+/// Quoting is applied whenever the field contains a comma, double-quote, newline, or CR.
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// Reads one RFC-4180 CSV row from a peekable char iterator.
+/// Returns `None` only when the iterator is already exhausted.
+/// CRLF and bare LF are both accepted as row terminators.
+fn csv_parse_row(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<Vec<String>> {
+    if chars.peek().is_none() {
+        return None;
+    }
+    let mut fields: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    while let Some(&ch) = chars.peek() {
+        chars.next();
+        if in_quotes {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                field.push(ch);
+            }
+        } else {
+            match ch {
+                '"' => { in_quotes = true; }
+                ',' => { fields.push(std::mem::take(&mut field)); }
+                '\r' => {
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    fields.push(std::mem::take(&mut field));
+                    return Some(fields);
+                }
+                '\n' => {
+                    fields.push(std::mem::take(&mut field));
+                    return Some(fields);
+                }
+                _ => { field.push(ch); }
+            }
+        }
+    }
+    fields.push(field);
+    Some(fields)
+}
+
+/// Parses a CSV string into rows, skipping blank lines (rows containing only one empty field).
+fn csv_parse_rows(content: &str) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut chars = content.chars().peekable();
+    while let Some(row) = csv_parse_row(&mut chars) {
+        if !(row.len() == 1 && row[0].is_empty()) {
+            rows.push(row);
+        }
+    }
+    rows
+}
+
+// ============================================================================
+// CSV export / import
+// ============================================================================
+
+/// Exports all credentials from an encrypted file to a CSV file.
+///
+/// The CSV has a header row (`key,value`) followed by one row per credential.
+/// Values are written in plain text. The output file is created or overwritten.
+pub fn export_credentials_to_csv<P: AsRef<Path>>(
+    enc_path: P,
+    password: &str,
+    csv_path: P,
+) -> Result<()> {
+    let credentials = list_credentials(enc_path, password)?;
+    let mut output = String::from("key,value\n");
+    for cred in &credentials {
+        output.push_str(&format!(
+            "{},{}\n",
+            csv_escape(&cred.key),
+            csv_escape(&cred.value)
+        ));
+    }
+    fs::write(csv_path.as_ref(), &output)
+        .with_context(|| format!("Failed to write CSV file: {}", csv_path.as_ref().display()))?;
+    Ok(())
+}
+
+/// Imports credentials from a CSV file into an encrypted vault.
+///
+/// The CSV must have a header row (`key,value`). Blank lines are skipped.
+/// Credentials are appended to an existing vault or create a new one.
+/// Fails fast on the first validation or write error.
+/// Returns the number of credentials imported.
+pub fn import_credentials_from_csv<P: AsRef<Path>>(
+    enc_path: P,
+    password: &str,
+    csv_path: P,
+) -> Result<usize> {
+    validate_password(password)?;
+
+    let content = fs::read_to_string(csv_path.as_ref())
+        .with_context(|| format!("CSV file not found: {}", csv_path.as_ref().display()))?;
+
+    let rows = csv_parse_rows(&content);
+
+    let expected_header = vec!["key".to_string(), "value".to_string()];
+    if rows.is_empty() || rows[0] != expected_header {
+        bail!("CSV file must have a header row: key,value");
+    }
+
+    let mut count = 0;
+    for (i, row) in rows[1..].iter().enumerate() {
+        if row.len() != 2 {
+            bail!(
+                "CSV row {} has {} field(s), expected 2 (key and value)",
+                i + 2,
+                row.len()
+            );
+        }
+        save_credential(enc_path.as_ref(), password, &row[0], &row[1])
+            .with_context(|| format!("Failed to import CSV row {}", i + 2))?;
+        count += 1;
+    }
+
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
