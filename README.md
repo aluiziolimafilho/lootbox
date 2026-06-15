@@ -50,7 +50,7 @@ Enter your file password to unlock, then:
 | `A` | Add a new credential |
 | `U` | Update the highlighted credential |
 | `R` | Remove the highlighted credential |
-| `S` | Show the highlighted credential (value revealed with Tab) |
+| `S` | Show the highlighted credential (Tab reveals value, K copies key, V copies value) |
 | `E` | Export the highlighted credential as a shell `export` statement (copied to clipboard; Tab reveals value, C re-copies) |
 | `Q` / `Esc` | Quit |
 

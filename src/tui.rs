@@ -72,6 +72,7 @@ enum AppState {
         id: usize,
         credential: Credential,
         value_visible: bool,
+        clipboard_status: Option<String>,
     },
     EnvVars {
         env_name: String,
@@ -316,6 +317,7 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
                         id: pos,
                         credential: cred,
                         value_visible: false,
+                        clipboard_status: None,
                     };
                 }
             }
@@ -524,13 +526,31 @@ fn handle_remove(code: KeyCode, app: &mut App) -> Result<bool> {
 }
 
 fn handle_read_view(code: KeyCode, app: &mut App) -> Result<bool> {
-    let AppState::ReadView { ref mut value_visible, .. } = app.state else {
+    let AppState::ReadView { ref mut value_visible, ref credential, ref mut clipboard_status, .. } = app.state else {
         return Ok(false);
     };
+    let key_str = credential.key.clone();
+    let val_str = credential.value.clone();
 
     match code {
         KeyCode::Tab => {
             *value_visible = !*value_visible;
+        }
+        KeyCode::Char('k') | KeyCode::Char('K') => {
+            *clipboard_status = Some(match arboard::Clipboard::new()
+                .and_then(|mut c| c.set_text(key_str))
+            {
+                Ok(()) => "Key copied!".to_string(),
+                Err(_) => "Clipboard unavailable".to_string(),
+            });
+        }
+        KeyCode::Char('v') | KeyCode::Char('V') => {
+            *clipboard_status = Some(match arboard::Clipboard::new()
+                .and_then(|mut c| c.set_text(val_str))
+            {
+                Ok(()) => "Value copied!".to_string(),
+                Err(_) => "Clipboard unavailable".to_string(),
+            });
         }
         KeyCode::Esc => {
             app.state = app.credential_list_state();
@@ -598,8 +618,8 @@ fn draw(f: &mut Frame, app: &App) {
             draw_list_bg(f);
             draw_remove_form(f, *id, key, error);
         }
-        AppState::ReadView { id, credential, value_visible } => {
-            draw_read_view(f, *id, credential, *value_visible);
+        AppState::ReadView { id, credential, value_visible, clipboard_status } => {
+            draw_read_view(f, *id, credential, *value_visible, clipboard_status.as_deref());
         }
         AppState::EnvVars { env_name, value, value_visible, clipboard_status, error } => {
             draw_env_vars(f, env_name, value, *value_visible, clipboard_status, error);
@@ -955,7 +975,7 @@ fn draw_remove_form(f: &mut Frame, id: usize, key: &str, error: &Option<String>)
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visible: bool) {
+fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visible: bool, clipboard_status: Option<&str>) {
     let area = f.area();
 
     let block = Block::default()
@@ -974,7 +994,7 @@ fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visib
 
     let toggle_label = if value_visible { "hide" } else { "show" };
 
-    let lines = vec![
+    let mut lines = vec![
         Line::from(""),
         Line::from(vec![
             Span::styled("  ID:    ", Style::default().fg(Color::DarkGray)),
@@ -994,11 +1014,20 @@ fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visib
             Span::styled(displayed_value, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(""),
-        Line::from(Span::styled(
-            format!("  Tab → {toggle_label} value   Esc → back"),
-            Style::default().fg(Color::DarkGray),
-        )),
     ];
+
+    if let Some(status) = clipboard_status {
+        lines.push(Line::from(Span::styled(
+            format!("  {status}"),
+            Style::default().fg(Color::Yellow),
+        )));
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!("  K → copy key   V → copy value   Tab → {toggle_label} value   Esc → back"),
+        Style::default().fg(Color::DarkGray),
+    )));
 
     f.render_widget(Paragraph::new(lines), inner);
 }
