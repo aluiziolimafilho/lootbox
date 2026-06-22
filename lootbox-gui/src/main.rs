@@ -1,15 +1,12 @@
-mod app;
-mod mask;
-mod screens;
-
 use std::path::PathBuf;
 
-use app::{AppView, CancelNewFile, ConfirmNewFile, QuitApp};
 use gpui::{
     App, AppContext as _, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, px, size,
 };
 use gpui_component::Root;
 use gpui_component_assets::Assets;
+use lootbox_gui::app::{AppView, CancelNewFile, ConfirmNewFile, QuitApp};
+use lootbox_gui::screens;
 
 fn main() {
     let file_path = parse_file_path_arg();
