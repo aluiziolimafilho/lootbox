@@ -7,8 +7,8 @@ use gpui_component::button::{Button, ButtonVariants};
 use lootbox::Credential;
 
 use crate::app::{
-    AddCredential, AppView, ExportEnv, QuitApp, RemoveCredential, ShowCredential,
-    UpdateCredential,
+    AddCredential, AppView, ExportCsv, ExportEnv, ImportCsv, QuitApp, RemoveCredential,
+    ShowCredential, UpdateCredential,
 };
 use crate::mask;
 
@@ -34,6 +34,8 @@ pub fn render(
         .on_action(cx.listener(AppView::open_remove_confirm))
         .on_action(cx.listener(AppView::open_read_view))
         .on_action(cx.listener(AppView::open_env_vars))
+        .on_action(cx.listener(AppView::open_export_csv))
+        .on_action(cx.listener(AppView::open_import_csv))
         .size_full()
         .flex()
         .flex_col()
@@ -107,6 +109,22 @@ pub fn render(
                         .label("Env (E)")
                         .on_click(cx.listener(|view, _, window, cx| {
                             view.open_env_vars(&ExportEnv, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("export-csv")
+                        .outline()
+                        .label("Export CSV (X)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_export_csv(&ExportCsv, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("import-csv")
+                        .outline()
+                        .label("Import CSV (I)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_import_csv(&ImportCsv, window, cx)
                         })),
                 )
                 .child(

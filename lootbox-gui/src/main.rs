@@ -7,9 +7,9 @@ use gpui_component::Root;
 use gpui_component_assets::Assets;
 use lootbox_gui::app::{
     AddCredential, AppView, BackToListFromEnvVars, BackToListFromReadView, CancelNewFile,
-    CancelRemove, ConfirmNewFile, ConfirmRemove, CopyEnvLine, CopyKey, CopyValue, ExportEnv,
-    QuitApp, RemoveCredential, SelectNext, SelectPrev, ShowCredential, ToggleEnvVisibility,
-    ToggleReadViewVisibility, UpdateCredential,
+    CancelRemove, ConfirmNewFile, ConfirmRemove, CopyEnvLine, CopyKey, CopyValue, ExportCsv,
+    ExportEnv, ImportCsv, QuitApp, RemoveCredential, SelectNext, SelectPrev, ShowCredential,
+    ToggleEnvVisibility, ToggleReadViewVisibility, UpdateCredential,
 };
 use lootbox_gui::screens;
 
@@ -44,6 +44,8 @@ fn main() {
             KeyBinding::new("r", RemoveCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("s", ShowCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("e", ExportEnv, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("x", ExportCsv, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("i", ImportCsv, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("enter", ConfirmRemove, Some(screens::remove_confirm::CONTEXT)),
             KeyBinding::new("escape", CancelRemove, Some(screens::remove_confirm::CONTEXT)),
             KeyBinding::new(

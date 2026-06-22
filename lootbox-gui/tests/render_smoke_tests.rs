@@ -5,7 +5,7 @@ use std::rc::Rc;
 use gpui::{AppContext as _, Entity, Render, TestAppContext, WindowHandle, WindowOptions};
 use gpui_component::Root;
 use lootbox_gui::app::{
-    AddCredential, AppScreen, AppView, ConfirmNewFile, ExportEnv, RemoveCredential,
+    AddCredential, AppScreen, AppView, ConfirmNewFile, ExportCsv, ExportEnv, RemoveCredential,
     ShowCredential,
 };
 
@@ -251,6 +251,36 @@ fn render_env_vars_invalid_key_does_not_panic(cx: &mut TestAppContext) {
                     cx,
                 );
                 view.open_env_vars(&ExportEnv, window, cx);
+                view.render(window, cx);
+            });
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn render_csv_form_does_not_panic(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let file_path = dir.path().join("vault.enc");
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+        .expect("seed vault");
+
+    let (window, view) = open_test_window(cx, file_path);
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                let AppScreen::Password { input, .. } = &view.screen else {
+                    panic!("expected Password screen");
+                };
+                input.update(cx, |state, cx| {
+                    state.set_value("correct-password", window, cx)
+                });
+                view.submit_password(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+                view.open_export_csv(&ExportCsv, window, cx);
                 view.render(window, cx);
             });
         })

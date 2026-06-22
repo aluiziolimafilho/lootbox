@@ -7,8 +7,8 @@ use gpui_component::Root;
 use lootbox_gui::app::{
     AddCredential, AppScreen, AppView, BackToListFromEnvVars, BackToListFromReadView,
     CancelNewFile, CancelRemove, ConfirmNewFile, ConfirmRemove, CopyKey, CopyValue, EditMode,
-    ExportEnv, RemoveCredential, SelectNext, SelectPrev, ShowCredential, ToggleEnvVisibility,
-    ToggleReadViewVisibility, UpdateCredential,
+    ExportCsv, ExportEnv, ImportCsv, RemoveCredential, SelectNext, SelectPrev, ShowCredential,
+    ToggleEnvVisibility, ToggleReadViewVisibility, UpdateCredential,
 };
 
 const VAULT_PASSWORD: &str = "correct-password";
@@ -872,5 +872,179 @@ fn back_to_list_from_env_vars_preserves_selection(cx: &mut TestAppContext) {
             panic!("expected to return to CredentialList");
         };
         assert_eq!(*selected, 1, "Esc from EnvVars should return to the same row");
+    });
+}
+
+#[gpui::test]
+fn export_csv_writes_file_and_status_message_matches(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(2));
+
+    let export_dir = tempfile::tempdir().expect("create temp dir");
+    let csv_path = export_dir.path().join("export.csv");
+    let csv_path_str = csv_path.to_str().unwrap().to_string();
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_export_csv(&ExportCsv, window, cx);
+                let AppScreen::CsvForm { path_input, .. } = &view.screen else {
+                    panic!("expected CsvForm");
+                };
+                path_input.update(cx, |state, cx| {
+                    state.set_value(csv_path_str.clone(), window, cx)
+                });
+                view.submit_csv_form(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CsvForm { status, .. } = &view.screen else {
+            panic!("expected to remain on CsvForm to show the success status");
+        };
+        assert_eq!(
+            status.as_deref(),
+            Some(format!("Exported to {}", csv_path.display()).as_str())
+        );
+    });
+
+    let contents = std::fs::read_to_string(&csv_path).expect("export.csv should exist");
+    assert!(contents.starts_with("key,value"));
+    assert!(contents.contains("key1,value1"));
+    assert!(contents.contains("key2,value2"));
+
+    // A second Enter (status already set) returns to the list instead of re-submitting.
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.submit_csv_form(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        assert!(matches!(view.screen, AppScreen::CredentialList { .. }));
+    });
+}
+
+#[gpui::test]
+fn import_csv_appends_credentials_and_reports_correct_count(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(1));
+
+    let import_dir = tempfile::tempdir().expect("create temp dir");
+    let csv_path = import_dir.path().join("import.csv");
+    std::fs::write(&csv_path, "key,value\nimported1,val1\nimported2,val2\n")
+        .expect("write import.csv");
+    let csv_path_str = csv_path.to_str().unwrap().to_string();
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_import_csv(&ImportCsv, window, cx);
+                let AppScreen::CsvForm { path_input, .. } = &view.screen else {
+                    panic!("expected CsvForm");
+                };
+                path_input.update(cx, |state, cx| {
+                    state.set_value(csv_path_str.clone(), window, cx)
+                });
+                view.submit_csv_form(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CsvForm { status, .. } = &view.screen else {
+            panic!("expected to remain on CsvForm to show the success status");
+        };
+        assert_eq!(status.as_deref(), Some("Imported 2 credential(s)."));
+    });
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.submit_csv_form(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
+            panic!("expected to return to CredentialList");
+        };
+        assert_eq!(credentials.len(), 3, "1 seeded + 2 imported");
+    });
+}
+
+#[gpui::test]
+fn csv_form_cancel_returns_to_list_unchanged(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(1));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_export_csv(&ExportCsv, window, cx);
+                view.cancel_csv_form(&gpui_component::input::Escape, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
+            panic!("expected to return to CredentialList");
+        };
+        assert_eq!(credentials.len(), 1, "cancel must not change anything");
+    });
+}
+
+#[gpui::test]
+fn export_csv_invalid_path_sets_error(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(1));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_export_csv(&ExportCsv, window, cx);
+                let AppScreen::CsvForm { path_input, .. } = &view.screen else {
+                    panic!("expected CsvForm");
+                };
+                // A directory that doesn't exist, with a nonexistent parent -- write must fail.
+                path_input.update(cx, |state, cx| {
+                    state.set_value(
+                        "/this/path/does/not/exist/export.csv",
+                        window,
+                        cx,
+                    )
+                });
+                view.submit_csv_form(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CsvForm { error, status, .. } = &view.screen else {
+            panic!("expected to remain on CsvForm after a write error");
+        };
+        assert!(error.is_some());
+        assert!(status.is_none());
     });
 }

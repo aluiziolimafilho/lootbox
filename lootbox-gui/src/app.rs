@@ -20,7 +20,9 @@ actions!(
         UpdateCredential,
         RemoveCredential,
         ShowCredential,
-        ExportEnv
+        ExportEnv,
+        ExportCsv,
+        ImportCsv
     ]
 );
 actions!(remove_confirm, [ConfirmRemove, CancelRemove]);
@@ -80,6 +82,18 @@ pub enum AppScreen {
         clipboard_status: Option<String>,
         error: Option<String>,
     },
+    CsvForm {
+        mode: CsvMode,
+        path_input: Entity<InputState>,
+        status: Option<String>,
+        error: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub enum CsvMode {
+    Export,
+    Import,
 }
 
 pub struct AppView {
@@ -706,6 +720,85 @@ impl AppView {
         };
         self.refresh_credential_list(id.saturating_sub(1), window, cx);
     }
+
+    fn build_csv_form_screen(mode: CsvMode, window: &mut Window, cx: &mut Context<Self>) -> AppScreen {
+        let path_input = cx.new(|cx| InputState::new(window, cx).placeholder("Enter CSV file path..."));
+        path_input.update(cx, |state, cx| state.focus(window, cx));
+        AppScreen::CsvForm {
+            mode,
+            path_input,
+            status: None,
+            error: None,
+        }
+    }
+
+    pub fn open_export_csv(&mut self, _: &ExportCsv, window: &mut Window, cx: &mut Context<Self>) {
+        self.screen = Self::build_csv_form_screen(CsvMode::Export, window, cx);
+        cx.notify();
+    }
+
+    pub fn open_import_csv(&mut self, _: &ImportCsv, window: &mut Window, cx: &mut Context<Self>) {
+        self.screen = Self::build_csv_form_screen(CsvMode::Import, window, cx);
+        cx.notify();
+    }
+
+    /// `Enter` on the path field. Mirrors the TUI's `handle_export_csv_form`/
+    /// `handle_import_csv_form`: once `status` is set (a previous submit already succeeded),
+    /// a further Enter just returns to the list instead of re-submitting.
+    pub fn submit_csv_form(
+        &mut self,
+        _: &gpui_component::input::Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CsvForm {
+            mode,
+            path_input,
+            status,
+            ..
+        } = &self.screen
+        else {
+            return;
+        };
+        if status.is_some() {
+            self.refresh_credential_list(0, window, cx);
+            return;
+        }
+
+        let is_export = matches!(mode, CsvMode::Export);
+        let csv_path = PathBuf::from(path_input.read(cx).value().trim());
+
+        let result = if is_export {
+            lootbox::export_credentials_to_csv(&self.file_path, &self.password, &csv_path)
+                .map(|()| format!("Exported to {}", csv_path.display()))
+        } else {
+            lootbox::import_credentials_from_csv(&self.file_path, &self.password, &csv_path)
+                .map(|count| format!("Imported {count} credential(s)."))
+        };
+
+        match result {
+            Ok(message) => {
+                if let AppScreen::CsvForm { status, .. } = &mut self.screen {
+                    *status = Some(message);
+                }
+            }
+            Err(err) => {
+                if let AppScreen::CsvForm { error, .. } = &mut self.screen {
+                    *error = Some(err.to_string());
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    pub fn cancel_csv_form(
+        &mut self,
+        _: &gpui_component::input::Escape,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.refresh_credential_list(0, window, cx);
+    }
 }
 
 impl Render for AppView {
@@ -790,6 +883,20 @@ impl Render for AppView {
                 clipboard_status.clone(),
                 error.clone(),
                 self.focus_handle.clone(),
+                window,
+                cx,
+            )
+            .into_any_element(),
+            AppScreen::CsvForm {
+                mode,
+                path_input,
+                status,
+                error,
+            } => screens::csv_form::render(
+                *mode,
+                path_input.clone(),
+                status.clone(),
+                error.clone(),
                 window,
                 cx,
             )
