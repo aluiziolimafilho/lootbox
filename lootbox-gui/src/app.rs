@@ -7,7 +7,23 @@ use lootbox::Credential;
 use crate::screens;
 
 actions!(new_file_confirm, [ConfirmNewFile, CancelNewFile]);
-actions!(credential_list, [QuitApp]);
+actions!(
+    credential_list,
+    [
+        QuitApp,
+        SelectPrev,
+        SelectNext,
+        AddCredential,
+        UpdateCredential,
+        RemoveCredential
+    ]
+);
+actions!(remove_confirm, [ConfirmRemove, CancelRemove]);
+
+pub enum EditMode {
+    Add,
+    Update { id: usize },
+}
 
 pub enum AppScreen {
     NewFileConfirm,
@@ -19,6 +35,18 @@ pub enum AppScreen {
     CredentialList {
         credentials: Vec<Credential>,
         selected: usize,
+    },
+    CredentialForm {
+        mode: EditMode,
+        key_input: Entity<InputState>,
+        value_input: Entity<InputState>,
+        value_visible: bool,
+        error: Option<String>,
+    },
+    RemoveConfirm {
+        id: usize,
+        key: String,
+        error: Option<String>,
     },
 }
 
@@ -167,6 +195,298 @@ impl AppView {
         };
         cx.notify();
     }
+
+    /// Reloads credentials from disk and returns to the list, clamping `desired_selected` to
+    /// the new (possibly shorter, after a remove) bounds -- mirrors the TUI's behavior of
+    /// re-fetching after every CRUD operation rather than mutating an in-memory copy.
+    fn refresh_credential_list(
+        &mut self,
+        desired_selected: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let credentials = lootbox::list_credentials(&self.file_path, &self.password)
+            .unwrap_or_default();
+        let selected = if credentials.is_empty() {
+            0
+        } else {
+            desired_selected.min(credentials.len() - 1)
+        };
+        self.focus_handle.focus(window);
+        self.screen = AppScreen::CredentialList {
+            credentials,
+            selected,
+        };
+        cx.notify();
+    }
+
+    pub fn select_prev(&mut self, _: &SelectPrev, _window: &mut Window, cx: &mut Context<Self>) {
+        if let AppScreen::CredentialList { selected, .. } = &mut self.screen {
+            *selected = selected.saturating_sub(1);
+        }
+        cx.notify();
+    }
+
+    pub fn select_next(&mut self, _: &SelectNext, _window: &mut Window, cx: &mut Context<Self>) {
+        if let AppScreen::CredentialList {
+            credentials,
+            selected,
+        } = &mut self.screen
+        {
+            if !credentials.is_empty() {
+                *selected = (*selected + 1).min(credentials.len() - 1);
+            }
+        }
+        cx.notify();
+    }
+
+    fn build_credential_form_screen(
+        mode: EditMode,
+        key_value: Option<(String, String)>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AppScreen {
+        let initial_key = key_value.as_ref().map(|(key, _)| key.clone());
+        let initial_value = key_value.as_ref().map(|(_, value)| value.clone());
+        let key_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Key");
+            if let Some(key) = initial_key {
+                state = state.default_value(key);
+            }
+            state
+        });
+        let value_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).masked(true).placeholder("Value");
+            if let Some(value) = initial_value {
+                state = state.default_value(value);
+            }
+            state
+        });
+        key_input.update(cx, |state, cx| state.focus(window, cx));
+        AppScreen::CredentialForm {
+            mode,
+            key_input,
+            value_input,
+            value_visible: false,
+            error: None,
+        }
+    }
+
+    pub fn open_add_form(
+        &mut self,
+        _: &AddCredential,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.screen = Self::build_credential_form_screen(EditMode::Add, None, window, cx);
+        cx.notify();
+    }
+
+    pub fn open_update_form(
+        &mut self,
+        _: &UpdateCredential,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialList {
+            credentials,
+            selected,
+        } = &self.screen
+        else {
+            return;
+        };
+        let Some(credential) = credentials.get(*selected) else {
+            return;
+        };
+        let id = *selected + 1;
+        let key_value = (credential.key.clone(), credential.value.clone());
+        self.screen = Self::build_credential_form_screen(
+            EditMode::Update { id },
+            Some(key_value),
+            window,
+            cx,
+        );
+        cx.notify();
+    }
+
+    pub fn open_remove_confirm(
+        &mut self,
+        _: &RemoveCredential,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialList {
+            credentials,
+            selected,
+        } = &self.screen
+        else {
+            return;
+        };
+        let Some(credential) = credentials.get(*selected) else {
+            return;
+        };
+        self.focus_handle.focus(window);
+        self.screen = AppScreen::RemoveConfirm {
+            id: *selected + 1,
+            key: credential.key.clone(),
+            error: None,
+        };
+        cx.notify();
+    }
+
+    /// `Enter` on the Key field moves focus to the Value field (mirrors the TUI's `handle_add`).
+    pub fn advance_from_key_field(
+        &mut self,
+        _: &gpui_component::input::Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialForm { value_input, .. } = &self.screen else {
+            return;
+        };
+        value_input.update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// `Tab` on the Value field toggles visibility instead of moving focus -- this reproduces
+    /// the TUI's deliberate quirk. `IndentInline` is bound to `tab` inside gpui-component's
+    /// "Input" key context for every Input, but only *handled* when the input is multi-line;
+    /// for our single-line fields it has no handler and therefore propagates here unconsumed.
+    pub fn toggle_value_visibility_from_value_field(
+        &mut self,
+        _: &gpui_component::input::IndentInline,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialForm {
+            value_input,
+            value_visible,
+            ..
+        } = &mut self.screen
+        else {
+            return;
+        };
+        *value_visible = !*value_visible;
+        let now_visible = *value_visible;
+        value_input.update(cx, |state, cx| state.set_masked(!now_visible, window, cx));
+        cx.notify();
+    }
+
+    /// `Shift-Tab` on the Value field always moves focus back to the Key field (never toggles
+    /// visibility), matching the TUI's asymmetric Tab/BackTab handling in `handle_add`.
+    pub fn move_focus_to_key_field(
+        &mut self,
+        _: &gpui_component::input::OutdentInline,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialForm { key_input, .. } = &self.screen else {
+            return;
+        };
+        key_input.update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// `Escape` from either field cancels the form and returns to the list, matching the TUI.
+    pub fn cancel_credential_form(
+        &mut self,
+        _: &gpui_component::input::Escape,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialForm { mode, .. } = &self.screen else {
+            return;
+        };
+        let selected = match mode {
+            EditMode::Add => 0,
+            EditMode::Update { id } => id.saturating_sub(1),
+        };
+        self.refresh_credential_list(selected, window, cx);
+    }
+
+    /// `Enter` on the Value field submits the form -- always sends `Some(current_box_contents)`
+    /// for both fields, never `None`. Unlike the CLI's optional prompts (where a blank Enter
+    /// means "leave unchanged"), the GUI's fields are always pre-filled, so a cleared field is
+    /// a deliberate edit and should hit the normal non-empty validation error, not silently
+    /// keep the old value.
+    pub fn submit_credential_form(
+        &mut self,
+        _: &gpui_component::input::Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialForm {
+            mode,
+            key_input,
+            value_input,
+            ..
+        } = &self.screen
+        else {
+            return;
+        };
+        let key = key_input.read(cx).value().to_string();
+        let value = value_input.read(cx).value().to_string();
+
+        let result = match mode {
+            EditMode::Add => {
+                lootbox::save_credential(&self.file_path, &self.password, &key, &value)
+            }
+            EditMode::Update { id } => lootbox::update_credential(
+                &self.file_path,
+                &self.password,
+                *id,
+                Some(key.as_str()),
+                Some(value.as_str()),
+            ),
+        };
+
+        match result {
+            Ok(()) => {
+                let selected = match mode {
+                    EditMode::Add => usize::MAX, // clamps to the new last row
+                    EditMode::Update { id } => id.saturating_sub(1),
+                };
+                self.refresh_credential_list(selected, window, cx);
+            }
+            Err(err) => {
+                if let AppScreen::CredentialForm { error, .. } = &mut self.screen {
+                    *error = Some(err.to_string());
+                }
+                cx.notify();
+            }
+        }
+    }
+
+    pub fn confirm_remove(
+        &mut self,
+        _: &ConfirmRemove,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::RemoveConfirm { id, .. } = &self.screen else {
+            return;
+        };
+        let id = *id;
+        match lootbox::remove_credential(&self.file_path, &self.password, id) {
+            Ok(()) => self.refresh_credential_list(id.saturating_sub(1), window, cx),
+            Err(err) => {
+                if let AppScreen::RemoveConfirm { error, .. } = &mut self.screen {
+                    *error = Some(err.to_string());
+                }
+                cx.notify();
+            }
+        }
+    }
+
+    pub fn cancel_remove(
+        &mut self,
+        _: &CancelRemove,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::RemoveConfirm { id, .. } = &self.screen else {
+            return;
+        };
+        self.refresh_credential_list(id.saturating_sub(1), window, cx);
+    }
 }
 
 impl Render for AppView {
@@ -191,6 +511,31 @@ impl Render for AppView {
             } => screens::credential_list::render(
                 credentials,
                 *selected,
+                self.focus_handle.clone(),
+                window,
+                cx,
+            )
+            .into_any_element(),
+            AppScreen::CredentialForm {
+                mode,
+                key_input,
+                value_input,
+                value_visible,
+                error,
+            } => screens::credential_form::render(
+                mode,
+                key_input.clone(),
+                value_input.clone(),
+                *value_visible,
+                error.clone(),
+                window,
+                cx,
+            )
+            .into_any_element(),
+            AppScreen::RemoveConfirm { id, key, error } => screens::remove_confirm::render(
+                *id,
+                key.clone(),
+                error.clone(),
                 self.focus_handle.clone(),
                 window,
                 cx,

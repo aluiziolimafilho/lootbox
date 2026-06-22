@@ -2,10 +2,11 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, Window, div,
 };
-use gpui_component::button::Button;
+use gpui_component::Disableable;
+use gpui_component::button::{Button, ButtonVariants};
 use lootbox::Credential;
 
-use crate::app::{AppView, QuitApp};
+use crate::app::{AddCredential, AppView, QuitApp, RemoveCredential, UpdateCredential};
 use crate::mask;
 
 pub const CONTEXT: &str = "credential_list";
@@ -17,10 +18,17 @@ pub fn render(
     _window: &mut Window,
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
+    let has_credentials = !credentials.is_empty();
+
     div()
         .key_context(CONTEXT)
         .track_focus(&focus_handle)
         .on_action(cx.listener(AppView::quit_app))
+        .on_action(cx.listener(AppView::select_prev))
+        .on_action(cx.listener(AppView::select_next))
+        .on_action(cx.listener(AppView::open_add_form))
+        .on_action(cx.listener(AppView::open_update_form))
+        .on_action(cx.listener(AppView::open_remove_confirm))
         .size_full()
         .flex()
         .flex_col()
@@ -49,9 +57,42 @@ pub fn render(
             this.child("No credentials yet.")
         })
         .child(
-            Button::new("quit")
-                .outline()
-                .label("Quit (Q)")
-                .on_click(cx.listener(|view, _, window, cx| view.quit_app(&QuitApp, window, cx))),
+            div()
+                .flex()
+                .gap_2()
+                .child(
+                    Button::new("add")
+                        .primary()
+                        .label("Add (A)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_add_form(&AddCredential, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("update")
+                        .outline()
+                        .disabled(!has_credentials)
+                        .label("Update (U)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_update_form(&UpdateCredential, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("remove")
+                        .danger()
+                        .disabled(!has_credentials)
+                        .label("Remove (R)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_remove_confirm(&RemoveCredential, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("quit")
+                        .outline()
+                        .label("Quit (Q)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.quit_app(&QuitApp, window, cx)
+                        })),
+                ),
         )
 }

@@ -5,7 +5,10 @@ use gpui::{
 };
 use gpui_component::Root;
 use gpui_component_assets::Assets;
-use lootbox_gui::app::{AppView, CancelNewFile, ConfirmNewFile, QuitApp};
+use lootbox_gui::app::{
+    AddCredential, AppView, CancelNewFile, CancelRemove, ConfirmNewFile, ConfirmRemove,
+    QuitApp, RemoveCredential, SelectNext, SelectPrev, UpdateCredential,
+};
 use lootbox_gui::screens;
 
 fn main() {
@@ -32,6 +35,13 @@ fn main() {
             KeyBinding::new("q", CancelNewFile, Some(screens::new_file_confirm::CONTEXT)),
             KeyBinding::new("q", QuitApp, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("escape", QuitApp, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("up", SelectPrev, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("down", SelectNext, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("a", AddCredential, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("u", UpdateCredential, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("r", RemoveCredential, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("enter", ConfirmRemove, Some(screens::remove_confirm::CONTEXT)),
+            KeyBinding::new("escape", CancelRemove, Some(screens::remove_confirm::CONTEXT)),
         ]);
 
         let bounds = Bounds::centered(None, size(px(900.0), px(640.0)), cx);

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use gpui::{AppContext as _, Entity, Render, TestAppContext, WindowHandle, WindowOptions};
 use gpui_component::Root;
-use lootbox_gui::app::{AppScreen, AppView, ConfirmNewFile};
+use lootbox_gui::app::{AddCredential, AppScreen, AppView, ConfirmNewFile, RemoveCredential};
 
 fn scratch_vault_path() -> PathBuf {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -98,6 +98,66 @@ fn render_empty_credential_list_does_not_panic(cx: &mut TestAppContext) {
                     window,
                     cx,
                 );
+                view.render(window, cx);
+            });
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn render_credential_form_does_not_panic(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let file_path = dir.path().join("vault.enc");
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+        .expect("seed vault");
+
+    let (window, view) = open_test_window(cx, file_path);
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                let AppScreen::Password { input, .. } = &view.screen else {
+                    panic!("expected Password screen");
+                };
+                input.update(cx, |state, cx| {
+                    state.set_value("correct-password", window, cx)
+                });
+                view.submit_password(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+                view.open_add_form(&AddCredential, window, cx);
+                view.render(window, cx);
+            });
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+fn render_remove_confirm_does_not_panic(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let file_path = dir.path().join("vault.enc");
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+        .expect("seed vault");
+
+    let (window, view) = open_test_window(cx, file_path);
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                let AppScreen::Password { input, .. } = &view.screen else {
+                    panic!("expected Password screen");
+                };
+                input.update(cx, |state, cx| {
+                    state.set_value("correct-password", window, cx)
+                });
+                view.submit_password(
+                    &gpui_component::input::Enter { secondary: false },
+                    window,
+                    cx,
+                );
+                view.open_remove_confirm(&RemoveCredential, window, cx);
                 view.render(window, cx);
             });
         })
