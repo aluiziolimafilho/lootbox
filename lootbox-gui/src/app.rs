@@ -278,10 +278,9 @@ impl AppView {
             credentials,
             selected,
         } = &mut self.screen
+            && !credentials.is_empty()
         {
-            if !credentials.is_empty() {
-                *selected = (*selected + 1).min(credentials.len() - 1);
-            }
+            *selected = (*selected + 1).min(credentials.len() - 1);
         }
         cx.notify();
     }

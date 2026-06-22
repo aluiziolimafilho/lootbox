@@ -62,6 +62,32 @@ Secret values are masked as `●●●●●●` by default. Press **Tab** while
 
 ---
 
+### GUI — desktop app
+
+Pass a file path to the `lootbox-gui` binary to open the native desktop UI (see [GUI crate](#gui-crate) below for how to build/run it):
+
+```bash
+cargo run -p lootbox-gui -- credentials.enc
+```
+
+Enter your file password to unlock, then on the credential list:
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate the credential list |
+| `A` | Add a new credential |
+| `U` | Update the selected credential |
+| `R` | Remove the selected credential |
+| `S` | Show the selected credential (Tab reveals value, K copies key, V copies value) |
+| `E` | Export the selected credential as a shell `export` statement (Tab reveals value, C re-copies) |
+| `X` | Export all credentials to a CSV file (prompts for output path) |
+| `I` | Import credentials from a CSV file (prompts for input path) |
+| `Q` / `Esc` | Quit |
+
+Every action is also reachable by mouse via the buttons below the list. Secret values are masked as `**********` in read-only views (list rows, Show, Env) regardless of actual length; the Add/Update form's Value field uses standard per-character password masking while typing.
+
+---
+
 ### CLI commands
 
 All CLI commands prompt for the file password interactively (input is hidden).

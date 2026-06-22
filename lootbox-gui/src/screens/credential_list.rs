@@ -3,7 +3,7 @@ use gpui::{
     Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, Window, div,
 };
 use gpui_component::Disableable;
-use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::button::{Button, ButtonVariants as _};
 use lootbox::Credential;
 
 use crate::app::{
@@ -95,7 +95,7 @@ pub fn render(
                 )
                 .child(
                     Button::new("show")
-                        .outline()
+                        .info()
                         .disabled(!has_credentials)
                         .label("Show (S)")
                         .on_click(cx.listener(|view, _, window, cx| {
@@ -104,7 +104,7 @@ pub fn render(
                 )
                 .child(
                     Button::new("env")
-                        .outline()
+                        .info()
                         .disabled(!has_credentials)
                         .label("Env (E)")
                         .on_click(cx.listener(|view, _, window, cx| {
@@ -113,7 +113,7 @@ pub fn render(
                 )
                 .child(
                     Button::new("export-csv")
-                        .outline()
+                        .warning()
                         .label("Export CSV (X)")
                         .on_click(cx.listener(|view, _, window, cx| {
                             view.open_export_csv(&ExportCsv, window, cx)
@@ -121,7 +121,7 @@ pub fn render(
                 )
                 .child(
                     Button::new("import-csv")
-                        .outline()
+                        .warning()
                         .label("Import CSV (I)")
                         .on_click(cx.listener(|view, _, window, cx| {
                             view.open_import_csv(&ImportCsv, window, cx)
