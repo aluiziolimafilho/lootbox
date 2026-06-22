@@ -19,17 +19,19 @@ Secure, encrypted credential storage for the terminal. Each file holds one or mo
 
 ## Installation
 
+This repo is a Cargo workspace with two members: `lootbox-core` (the CLI/TUI, package name `lootbox`) and `lootbox-gui` (the GPUI desktop app). Build the CLI specifically with `-p lootbox` so you don't need a GPU toolchain just to get the terminal tool:
+
 ```bash
 git clone https://github.com/your-username/lootbox.git
 cd lootbox
-cargo build --release
+cargo build --release -p lootbox
 cp target/release/lootbox ~/.local/bin/
 ```
 
 Or run directly without installing:
 
 ```bash
-cargo run --release -- <command> <file>
+cargo run --release -p lootbox -- <command> <file>
 ```
 
 ## Usage
@@ -188,16 +190,16 @@ The ciphertext decrypts to a JSON array of `{ "key": "…", "value": "…" }` ob
 ### Build
 
 ```bash
-cargo build           # debug build
-cargo build --release # optimized build
+cargo build -p lootbox            # debug build, CLI/TUI only
+cargo build --release -p lootbox  # optimized build, CLI/TUI only
 ```
 
 ### Run during development
 
 ```bash
-cargo run -- save myfile.enc
-cargo run -- list myfile.enc
-cargo run -- myfile.enc       # TUI mode
+cargo run -p lootbox -- save myfile.enc
+cargo run -p lootbox -- list myfile.enc
+cargo run -p lootbox -- myfile.enc       # TUI mode
 ```
 
 ### Tests
@@ -205,20 +207,22 @@ cargo run -- myfile.enc       # TUI mode
 271 tests across 7 integration test suites plus unit tests embedded in each module.
 
 ```bash
-cargo test                              # all tests
-cargo test --test save_command_tests    # one integration suite
-cargo test --test list_command_tests
-cargo test --test read_command_tests
-cargo test --test update_command_tests
-cargo test --test remove_command_tests
-cargo test --test env_command_tests
-cargo test --test mcp_command_tests
-cargo test --lib                        # unit tests only
-cargo test -- --nocapture               # show stdout from tests
-cargo test test_save_binary_format      # run by name pattern
+cargo test -p lootbox                              # all tests
+cargo test -p lootbox --test save_command_tests    # one integration suite
+cargo test -p lootbox --test list_command_tests
+cargo test -p lootbox --test read_command_tests
+cargo test -p lootbox --test update_command_tests
+cargo test -p lootbox --test remove_command_tests
+cargo test -p lootbox --test env_command_tests
+cargo test -p lootbox --test mcp_command_tests
+cargo test -p lootbox --lib                        # unit tests only
+cargo test -p lootbox -- --nocapture               # show stdout from tests
+cargo test -p lootbox test_save_binary_format      # run by name pattern
 ```
 
 ### Module structure
+
+`lootbox-core/src/`:
 
 | Module | Responsibility |
 |--------|----------------|
@@ -229,6 +233,16 @@ cargo test test_save_binary_format      # run by name pattern
 | `mcp.rs` | JSON-RPC 2.0 MCP server message handler |
 | `main.rs` | CLI entry point (clap); TUI dispatch when no subcommand is given |
 | `lib.rs` | Public API re-exports |
+
+### GUI crate
+
+`lootbox-gui/` is a separate workspace member holding a native desktop UI built with [GPUI](https://www.gpui.rs) + [gpui-component](https://github.com/longbridge/gpui-component), depending on `lootbox-core` via a path dependency for all storage/crypto/validation logic — no business logic is duplicated.
+
+```bash
+cargo run -p lootbox-gui                  # launch the desktop app
+cargo build --release -p lootbox-gui      # optimized build (first build pulls GPU deps, slow)
+cargo test -p lootbox-gui                 # headless UI tests (#[gpui::test])
+```
 
 ### Validation rules
 

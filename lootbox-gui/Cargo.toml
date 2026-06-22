@@ -1,0 +1,12 @@
+[package]
+name = "lootbox-gui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "lootbox-gui"
+path = "src/main.rs"
+
+[dependencies]
+lootbox = { path = "../lootbox-core" }
+anyhow = "1.0"

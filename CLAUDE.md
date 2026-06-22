@@ -4,47 +4,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LootBox is a secure credential storage CLI tool written in Rust. It stores a single credential (key-value pair) per encrypted file using AES-256-GCM encryption with Argon2 password-based key derivation.
+LootBox is a secure credential storage tool written in Rust. It stores a single credential (key-value pair) per encrypted file using AES-256-GCM encryption with Argon2 password-based key derivation.
+
+The repo is a Cargo workspace with two members:
+
+- **`lootbox-core/`** — package name `lootbox`, the CLI + Ratatui TUI + business logic. Produces the `lootbox` binary.
+- **`lootbox-gui/`** — a native desktop UI built with [GPUI](https://www.gpui.rs) + [gpui-component](https://github.com/longbridge/gpui-component), depending on `lootbox-core` via a path dependency. Holds no business logic of its own.
 
 ## Build and Test Commands
 
 ```bash
-# Build the project
-cargo build
-cargo build --release
+# Build the CLI/TUI (lootbox-core) — use -p so GPU deps aren't pulled in
+cargo build -p lootbox
+cargo build --release -p lootbox
 
-# Run all tests (65+ tests total)
-cargo test
+# Run all CLI/TUI tests (65+ tests total)
+cargo test -p lootbox
 
 # Run specific test suites
-cargo test --test save_command_tests
-cargo test --test list_command_tests
-cargo test --lib  # Run unit tests only
+cargo test -p lootbox --test save_command_tests
+cargo test -p lootbox --test list_command_tests
+cargo test -p lootbox --lib  # Run unit tests only
 
 # Run specific test by name pattern
-cargo test test_save_binary_format
+cargo test -p lootbox test_save_binary_format
 
 # Run tests with output
-cargo test -- --nocapture
+cargo test -p lootbox -- --nocapture
 
 # Run the CLI
-cargo run -- save <filename>
-cargo run -- list <filename>
+cargo run -p lootbox -- save <filename>
+cargo run -p lootbox -- list <filename>
 ./target/release/lootbox save <filename>
 ./target/release/lootbox list <filename>
+
+# Build/run/test the GUI
+cargo build -p lootbox-gui
+cargo run -p lootbox-gui
+cargo test -p lootbox-gui   # headless #[gpui::test] suite
 ```
 
 ## Architecture
 
 ### Module Structure
 
-The codebase is organized into focused modules:
+`lootbox-core/src/` is organized into focused modules:
 
 - **`crypto.rs`**: Low-level cryptography operations (Argon2 key derivation, AES-256-GCM encryption/decryption, random salt/nonce generation)
 - **`validation.rs`**: Input validation for passwords, secret keys, and secret values
 - **`storage.rs`**: High-level credential save/load operations and binary file format handling
+- **`tui.rs`**: ratatui + crossterm interactive terminal UI
+- **`mcp.rs`**: JSON-RPC 2.0 MCP server message handler
 - **`main.rs`**: CLI interface using clap, interactive prompts with rpassword
 - **`lib.rs`**: Public API exports
+
+`lootbox-gui/src/` mirrors the TUI's screen set (NewFileConfirm, Password, CredentialList, Add/Update form, RemoveConfirm, ReadView, EnvVars, CSV export/import) as GPUI screens, calling the same `lootbox::*` functions re-exported from `lootbox-core`'s `lib.rs` — no storage/crypto/validation logic is duplicated in the GUI crate.
 
 ### Binary File Format
 
