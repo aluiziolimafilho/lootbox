@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use gpui::{AppContext as _, Context, Entity, FocusHandle, IntoElement, Render, Window, actions};
+use gpui::{
+    AppContext as _, ClipboardItem, Context, Entity, FocusHandle, IntoElement, Render, Window,
+    actions,
+};
 use gpui_component::input::InputState;
 use lootbox::Credential;
 
@@ -15,10 +18,25 @@ actions!(
         SelectNext,
         AddCredential,
         UpdateCredential,
-        RemoveCredential
+        RemoveCredential,
+        ShowCredential,
+        ExportEnv
     ]
 );
 actions!(remove_confirm, [ConfirmRemove, CancelRemove]);
+actions!(
+    read_view,
+    [
+        ToggleReadViewVisibility,
+        CopyKey,
+        CopyValue,
+        BackToListFromReadView
+    ]
+);
+actions!(
+    env_vars,
+    [ToggleEnvVisibility, CopyEnvLine, BackToListFromEnvVars]
+);
 
 pub enum EditMode {
     Add,
@@ -46,6 +64,20 @@ pub enum AppScreen {
     RemoveConfirm {
         id: usize,
         key: String,
+        error: Option<String>,
+    },
+    ReadView {
+        id: usize,
+        credential: Credential,
+        value_visible: bool,
+        clipboard_status: Option<String>,
+    },
+    EnvVars {
+        id: usize,
+        env_name: String,
+        value: String,
+        value_visible: bool,
+        clipboard_status: Option<String>,
         error: Option<String>,
     },
 }
@@ -487,6 +519,193 @@ impl AppView {
         };
         self.refresh_credential_list(id.saturating_sub(1), window, cx);
     }
+
+    pub fn open_read_view(
+        &mut self,
+        _: &ShowCredential,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::CredentialList {
+            credentials,
+            selected,
+        } = &self.screen
+        else {
+            return;
+        };
+        let Some(credential) = credentials.get(*selected) else {
+            return;
+        };
+        self.focus_handle.focus(window);
+        self.screen = AppScreen::ReadView {
+            id: *selected + 1,
+            credential: credential.clone(),
+            value_visible: false,
+            clipboard_status: None,
+        };
+        cx.notify();
+    }
+
+    pub fn toggle_read_view_visibility(
+        &mut self,
+        _: &ToggleReadViewVisibility,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let AppScreen::ReadView { value_visible, .. } = &mut self.screen {
+            *value_visible = !*value_visible;
+        }
+        cx.notify();
+    }
+
+    pub fn copy_read_view_key(
+        &mut self,
+        _: &CopyKey,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::ReadView {
+            credential,
+            clipboard_status,
+            ..
+        } = &mut self.screen
+        else {
+            return;
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(credential.key.clone()));
+        *clipboard_status = Some("Key copied!".to_string());
+        cx.notify();
+    }
+
+    pub fn copy_read_view_value(
+        &mut self,
+        _: &CopyValue,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::ReadView {
+            credential,
+            clipboard_status,
+            ..
+        } = &mut self.screen
+        else {
+            return;
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(credential.value.clone()));
+        *clipboard_status = Some("Value copied!".to_string());
+        cx.notify();
+    }
+
+    pub fn back_to_list_from_read_view(
+        &mut self,
+        _: &BackToListFromReadView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::ReadView { id, .. } = &self.screen else {
+            return;
+        };
+        self.refresh_credential_list(id.saturating_sub(1), window, cx);
+    }
+
+    pub fn open_env_vars(&mut self, _: &ExportEnv, window: &mut Window, cx: &mut Context<Self>) {
+        let AppScreen::CredentialList {
+            credentials,
+            selected,
+        } = &self.screen
+        else {
+            return;
+        };
+        if credentials.get(*selected).is_none() {
+            return;
+        }
+        let id = *selected + 1;
+
+        let screen = match lootbox::generate_env_vars(&self.file_path, &self.password, id) {
+            Ok(mut result) => {
+                if let Some(entry) = result.created.pop() {
+                    AppScreen::EnvVars {
+                        id,
+                        env_name: entry.env_name,
+                        value: entry.value,
+                        value_visible: false,
+                        clipboard_status: None,
+                        error: None,
+                    }
+                } else if let Some(invalid) = result.invalid.pop() {
+                    AppScreen::EnvVars {
+                        id,
+                        env_name: String::new(),
+                        value: String::new(),
+                        value_visible: false,
+                        clipboard_status: None,
+                        error: Some(invalid.reason),
+                    }
+                } else {
+                    return;
+                }
+            }
+            Err(err) => AppScreen::EnvVars {
+                id,
+                env_name: String::new(),
+                value: String::new(),
+                value_visible: false,
+                clipboard_status: None,
+                error: Some(err.to_string()),
+            },
+        };
+
+        self.focus_handle.focus(window);
+        self.screen = screen;
+        cx.notify();
+    }
+
+    pub fn toggle_env_visibility(
+        &mut self,
+        _: &ToggleEnvVisibility,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let AppScreen::EnvVars { value_visible, .. } = &mut self.screen {
+            *value_visible = !*value_visible;
+        }
+        cx.notify();
+    }
+
+    /// Copies the full `export KEY='value'` line (shell-escaped, matching the CLI's `env`
+    /// command), not just the bare value -- this is what the TUI's `C` re-copy does too.
+    pub fn copy_env_line(
+        &mut self,
+        _: &CopyEnvLine,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::EnvVars {
+            env_name,
+            value,
+            clipboard_status,
+            ..
+        } = &mut self.screen
+        else {
+            return;
+        };
+        let line = format!("export {}={}", env_name, crate::clipboard::shell_escape(value));
+        cx.write_to_clipboard(ClipboardItem::new_string(line));
+        *clipboard_status = Some("Copied to clipboard!".to_string());
+        cx.notify();
+    }
+
+    pub fn back_to_list_from_env_vars(
+        &mut self,
+        _: &BackToListFromEnvVars,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::EnvVars { id, .. } = &self.screen else {
+            return;
+        };
+        self.refresh_credential_list(id.saturating_sub(1), window, cx);
+    }
 }
 
 impl Render for AppView {
@@ -535,6 +754,40 @@ impl Render for AppView {
             AppScreen::RemoveConfirm { id, key, error } => screens::remove_confirm::render(
                 *id,
                 key.clone(),
+                error.clone(),
+                self.focus_handle.clone(),
+                window,
+                cx,
+            )
+            .into_any_element(),
+            AppScreen::ReadView {
+                id,
+                credential,
+                value_visible,
+                clipboard_status,
+            } => screens::read_view::render(
+                *id,
+                credential.clone(),
+                *value_visible,
+                clipboard_status.clone(),
+                self.focus_handle.clone(),
+                window,
+                cx,
+            )
+            .into_any_element(),
+            AppScreen::EnvVars {
+                id,
+                env_name,
+                value,
+                value_visible,
+                clipboard_status,
+                error,
+            } => screens::env_vars::render(
+                *id,
+                env_name.clone(),
+                value.clone(),
+                *value_visible,
+                clipboard_status.clone(),
                 error.clone(),
                 self.focus_handle.clone(),
                 window,

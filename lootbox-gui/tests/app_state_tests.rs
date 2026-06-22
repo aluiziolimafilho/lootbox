@@ -5,8 +5,10 @@ use std::rc::Rc;
 use gpui::{AppContext as _, Entity, TestAppContext, WindowHandle, WindowOptions};
 use gpui_component::Root;
 use lootbox_gui::app::{
-    AddCredential, AppScreen, AppView, CancelNewFile, CancelRemove, ConfirmNewFile, ConfirmRemove,
-    EditMode, RemoveCredential, SelectNext, SelectPrev, UpdateCredential,
+    AddCredential, AppScreen, AppView, BackToListFromEnvVars, BackToListFromReadView,
+    CancelNewFile, CancelRemove, ConfirmNewFile, ConfirmRemove, CopyKey, CopyValue, EditMode,
+    ExportEnv, RemoveCredential, SelectNext, SelectPrev, ShowCredential, ToggleEnvVisibility,
+    ToggleReadViewVisibility, UpdateCredential,
 };
 
 const VAULT_PASSWORD: &str = "correct-password";
@@ -664,5 +666,211 @@ fn list_actions_noop_when_credentials_empty(cx: &mut TestAppContext) {
             matches!(view.screen, AppScreen::CredentialList { .. }),
             "Update/Remove on an empty list must stay on CredentialList, not panic or transition"
         );
+    });
+}
+
+#[gpui::test]
+fn show_credential_tab_toggles_value_visibility(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(1));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_read_view(&ShowCredential, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::ReadView {
+            id,
+            credential,
+            value_visible,
+            ..
+        } = &view.screen
+        else {
+            panic!("expected ReadView");
+        };
+        assert_eq!(*id, 1);
+        assert_eq!(credential.key, "key1");
+        assert!(!value_visible, "value should start masked");
+    });
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.toggle_read_view_visibility(&ToggleReadViewVisibility, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::ReadView { value_visible, .. } = &view.screen else {
+            panic!("expected ReadView");
+        };
+        assert!(*value_visible, "Tab should reveal the value");
+    });
+}
+
+#[gpui::test]
+fn show_credential_copy_key_and_value_set_clipboard_status(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(1));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_read_view(&ShowCredential, window, cx);
+                view.copy_read_view_key(&CopyKey, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::ReadView {
+            clipboard_status, ..
+        } = &view.screen
+        else {
+            panic!("expected ReadView");
+        };
+        assert_eq!(clipboard_status.as_deref(), Some("Key copied!"));
+    });
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.copy_read_view_value(&CopyValue, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::ReadView {
+            clipboard_status, ..
+        } = &view.screen
+        else {
+            panic!("expected ReadView");
+        };
+        assert_eq!(clipboard_status.as_deref(), Some("Value copied!"));
+    });
+}
+
+#[gpui::test]
+fn back_to_list_from_read_view_preserves_selection(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(3));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.select_next(&SelectNext, window, cx); // select row index 1 ("key2")
+                view.open_read_view(&ShowCredential, window, cx);
+                view.back_to_list_from_read_view(&BackToListFromReadView, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CredentialList { selected, .. } = &view.screen else {
+            panic!("expected to return to CredentialList");
+        };
+        assert_eq!(*selected, 1, "Esc from Show should return to the same row");
+    });
+}
+
+#[gpui::test]
+fn env_vars_valid_key_shows_created_entry(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(1));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_env_vars(&ExportEnv, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::EnvVars {
+            env_name,
+            value,
+            error,
+            ..
+        } = &view.screen
+        else {
+            panic!("expected EnvVars");
+        };
+        assert_eq!(env_name, "KEY1");
+        assert_eq!(value, "value1");
+        assert!(error.is_none());
+    });
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.copy_env_line(&lootbox_gui::app::CopyEnvLine, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::EnvVars {
+            clipboard_status, ..
+        } = &view.screen
+        else {
+            panic!("expected EnvVars");
+        };
+        assert_eq!(clipboard_status.as_deref(), Some("Copied to clipboard!"));
+    });
+}
+
+#[gpui::test]
+fn env_vars_invalid_key_shows_invalid_reason(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let file_path = dir.path().join("vault.enc");
+    lootbox::save_credential(&file_path, VAULT_PASSWORD, "api@key", "secret-value")
+        .expect("seed vault");
+
+    let (window, view) = open_unlocked_window(cx, file_path);
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_env_vars(&ExportEnv, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::EnvVars { error, .. } = &view.screen else {
+            panic!("expected EnvVars");
+        };
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|reason| reason.contains("invalid character")),
+            "expected an invalid-character reason, got {error:?}"
+        );
+    });
+}
+
+#[gpui::test]
+fn back_to_list_from_env_vars_preserves_selection(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(2));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.select_next(&SelectNext, window, cx); // select row index 1 ("key2")
+                view.open_env_vars(&ExportEnv, window, cx);
+                view.toggle_env_visibility(&ToggleEnvVisibility, window, cx);
+                view.back_to_list_from_env_vars(&BackToListFromEnvVars, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::CredentialList { selected, .. } = &view.screen else {
+            panic!("expected to return to CredentialList");
+        };
+        assert_eq!(*selected, 1, "Esc from EnvVars should return to the same row");
     });
 }

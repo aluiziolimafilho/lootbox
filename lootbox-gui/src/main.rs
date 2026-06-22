@@ -6,8 +6,10 @@ use gpui::{
 use gpui_component::Root;
 use gpui_component_assets::Assets;
 use lootbox_gui::app::{
-    AddCredential, AppView, CancelNewFile, CancelRemove, ConfirmNewFile, ConfirmRemove,
-    QuitApp, RemoveCredential, SelectNext, SelectPrev, UpdateCredential,
+    AddCredential, AppView, BackToListFromEnvVars, BackToListFromReadView, CancelNewFile,
+    CancelRemove, ConfirmNewFile, ConfirmRemove, CopyEnvLine, CopyKey, CopyValue, ExportEnv,
+    QuitApp, RemoveCredential, SelectNext, SelectPrev, ShowCredential, ToggleEnvVisibility,
+    ToggleReadViewVisibility, UpdateCredential,
 };
 use lootbox_gui::screens;
 
@@ -40,8 +42,29 @@ fn main() {
             KeyBinding::new("a", AddCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("u", UpdateCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("r", RemoveCredential, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("s", ShowCredential, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("e", ExportEnv, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("enter", ConfirmRemove, Some(screens::remove_confirm::CONTEXT)),
             KeyBinding::new("escape", CancelRemove, Some(screens::remove_confirm::CONTEXT)),
+            KeyBinding::new(
+                "tab",
+                ToggleReadViewVisibility,
+                Some(screens::read_view::CONTEXT),
+            ),
+            KeyBinding::new("k", CopyKey, Some(screens::read_view::CONTEXT)),
+            KeyBinding::new("v", CopyValue, Some(screens::read_view::CONTEXT)),
+            KeyBinding::new(
+                "escape",
+                BackToListFromReadView,
+                Some(screens::read_view::CONTEXT),
+            ),
+            KeyBinding::new("tab", ToggleEnvVisibility, Some(screens::env_vars::CONTEXT)),
+            KeyBinding::new("c", CopyEnvLine, Some(screens::env_vars::CONTEXT)),
+            KeyBinding::new(
+                "escape",
+                BackToListFromEnvVars,
+                Some(screens::env_vars::CONTEXT),
+            ),
         ]);
 
         let bounds = Bounds::centered(None, size(px(900.0), px(640.0)), cx);

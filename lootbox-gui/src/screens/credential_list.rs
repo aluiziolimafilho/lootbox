@@ -6,7 +6,10 @@ use gpui_component::Disableable;
 use gpui_component::button::{Button, ButtonVariants};
 use lootbox::Credential;
 
-use crate::app::{AddCredential, AppView, QuitApp, RemoveCredential, UpdateCredential};
+use crate::app::{
+    AddCredential, AppView, ExportEnv, QuitApp, RemoveCredential, ShowCredential,
+    UpdateCredential,
+};
 use crate::mask;
 
 pub const CONTEXT: &str = "credential_list";
@@ -29,6 +32,8 @@ pub fn render(
         .on_action(cx.listener(AppView::open_add_form))
         .on_action(cx.listener(AppView::open_update_form))
         .on_action(cx.listener(AppView::open_remove_confirm))
+        .on_action(cx.listener(AppView::open_read_view))
+        .on_action(cx.listener(AppView::open_env_vars))
         .size_full()
         .flex()
         .flex_col()
@@ -84,6 +89,24 @@ pub fn render(
                         .label("Remove (R)")
                         .on_click(cx.listener(|view, _, window, cx| {
                             view.open_remove_confirm(&RemoveCredential, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("show")
+                        .outline()
+                        .disabled(!has_credentials)
+                        .label("Show (S)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_read_view(&ShowCredential, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("env")
+                        .outline()
+                        .disabled(!has_credentials)
+                        .label("Env (E)")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_env_vars(&ExportEnv, window, cx)
                         })),
                 )
                 .child(
