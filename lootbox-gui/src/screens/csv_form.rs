@@ -2,6 +2,7 @@ use gpui::{
     ClickEvent, Context, Entity, InteractiveElement, IntoElement, ParentElement, Styled, Window,
     div,
 };
+use gpui_component::alert::Alert;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 
@@ -50,7 +51,7 @@ pub fn render(
                         .child(Input::new(&path_input)),
                 )
                 .children(status.map(|message| div().child(message)))
-                .children(error.map(|message| div().text_color(gpui::red()).child(message)))
+                .children(error.map(|message| Alert::error("csv-form-error", message).banner()))
                 .child(
                     div()
                         .flex()

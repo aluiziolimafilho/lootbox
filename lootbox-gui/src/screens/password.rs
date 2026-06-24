@@ -1,4 +1,5 @@
 use gpui::{Context, Entity, InteractiveElement, IntoElement, ParentElement, Styled, Window, div};
+use gpui_component::alert::Alert;
 use gpui_component::input::{Input, InputState};
 
 use crate::app::AppView;
@@ -32,7 +33,7 @@ pub fn render(
         .child(
             div()
                 .w(gpui::px(320.0))
-                .child(Input::new(&input)),
+                .child(Input::new(&input).mask_toggle()),
         )
-        .children(error.map(|message| div().text_color(gpui::red()).child(message)))
+        .children(error.map(|message| Alert::error("password-error", message).banner()))
 }

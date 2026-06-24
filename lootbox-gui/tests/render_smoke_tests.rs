@@ -6,6 +6,23 @@ use gpui::{AppContext as _, Entity, Render, TestAppContext, WindowHandle, Window
 use gpui_component::Root;
 use lootbox_gui::app::{AddCredential, AppScreen, AppView, ConfirmNewFile, ExportCsv, ExportEnv, RemoveCredential};
 
+/// Triggers `AppView::render` without going through `WindowHandle<Root>::update`, which would
+/// hold an exclusive lock on the Root entity for the whole call (it hands back `&mut Root`,
+/// even though we never use it). `AppView::render` reads Root itself (for the notification
+/// layer), so rendering from inside an already-active Root update panics with "cannot read
+/// Root while it is already being updated" -- a conflict that doesn't exist in the real paint
+/// pipeline, where `&mut Window` comes from the platform/frame loop, not from locking Root.
+/// The lower-level `cx.update_window` only hands back a type-erased `AnyView`, so it never
+/// locks Root at all.
+fn render_view(window: WindowHandle<Root>, view: &Entity<AppView>, cx: &mut TestAppContext) {
+    cx.update_window(window.into(), |_, window, cx| {
+        view.update(cx, |view, cx| {
+            view.render(window, cx);
+        });
+    })
+    .unwrap();
+}
+
 fn scratch_vault_path() -> PathBuf {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("vault.enc");
@@ -44,13 +61,7 @@ fn render_new_file_confirm_does_not_panic(cx: &mut TestAppContext) {
     let file_path = scratch_vault_path();
     let (window, view) = open_test_window(cx, file_path);
 
-    window
-        .update(cx, |_, window, cx| {
-            view.update(cx, |view, cx| {
-                view.render(window, cx);
-            });
-        })
-        .unwrap();
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
@@ -62,10 +73,10 @@ fn render_password_screen_does_not_panic(cx: &mut TestAppContext) {
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
                 view.confirm_new_file(&ConfirmNewFile, window, cx);
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 /// A brand new vault has zero credentials, so the right panel renders `DetailPane::Empty` --
@@ -90,10 +101,10 @@ fn render_empty_unlocked_does_not_panic(cx: &mut TestAppContext) {
                     window,
                     cx,
                 );
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
@@ -120,10 +131,10 @@ fn render_credential_form_does_not_panic(cx: &mut TestAppContext) {
                     cx,
                 );
                 view.open_add_form(&AddCredential, window, cx);
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
@@ -150,10 +161,10 @@ fn render_remove_confirm_does_not_panic(cx: &mut TestAppContext) {
                     cx,
                 );
                 view.open_remove_confirm(&RemoveCredential, window, cx);
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 /// Unlocking with at least one credential auto-selects and shows it, so this also covers the
@@ -181,10 +192,10 @@ fn render_unlocked_with_read_detail_does_not_panic(cx: &mut TestAppContext) {
                     window,
                     cx,
                 );
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
@@ -211,10 +222,10 @@ fn render_env_vars_does_not_panic(cx: &mut TestAppContext) {
                     cx,
                 );
                 view.open_env_vars(&ExportEnv, window, cx);
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
@@ -241,10 +252,10 @@ fn render_env_vars_invalid_key_does_not_panic(cx: &mut TestAppContext) {
                     cx,
                 );
                 view.open_env_vars(&ExportEnv, window, cx);
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
@@ -271,8 +282,8 @@ fn render_csv_form_does_not_panic(cx: &mut TestAppContext) {
                     cx,
                 );
                 view.open_export_csv(&ExportCsv, window, cx);
-                view.render(window, cx);
             });
         })
         .unwrap();
+    render_view(window, &view, cx);
 }

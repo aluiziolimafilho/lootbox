@@ -2,14 +2,17 @@ use gpui::{
     ClickEvent, Context, Entity, InteractiveElement, IntoElement, ParentElement, Styled, Window,
     div,
 };
+use gpui_component::alert::Alert;
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::clipboard::Clipboard;
+use gpui_component::description_list::DescriptionList;
+use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
 use gpui_component::input::{Input, InputState};
 use lootbox::Credential;
 
 use crate::app::{
-    AppView, CancelRemove, ConfirmRemove, DetailPane, EditMode, ExportEnv, RemoveCredential,
-    UpdateCredential,
+    AppView, CancelRemove, ConfirmRemove, CopyEnvLine, CopyKey, CopyValue, DetailPane, EditMode,
+    ExportEnv, RemoveCredential, UpdateCredential,
 };
 use crate::{clipboard, mask};
 
@@ -100,27 +103,47 @@ fn render_read(
         mask::MASK.to_string()
     };
 
+    // `Clipboard`'s own click handling already copies to the OS clipboard; `on_copied` routes
+    // the resulting feedback through the same AppView methods the K/V keyboard shortcuts use,
+    // so mouse and keyboard copying show identical status/toast feedback.
+    let view = cx.entity();
+    let key_clipboard = {
+        let view = view.clone();
+        Clipboard::new("copy-key")
+            .value(credential.key.clone())
+            .on_copied(move |_, window, cx| {
+                view.update(cx, |view, cx| view.copy_read_view_key(&CopyKey, window, cx));
+            })
+    };
+    let value_clipboard = {
+        let view = view.clone();
+        Clipboard::new("copy-value")
+            .value(credential.value.clone())
+            .on_copied(move |_, window, cx| {
+                view.update(cx, |view, cx| view.copy_read_view_value(&CopyValue, window, cx));
+            })
+    };
+
     div()
         .flex()
         .flex_col()
-        .gap_2()
-        .child(format!("[{id}] Key: {}", credential.key))
+        .gap_3()
+        .child(format!("Credential #{id}"))
         .child(
-            div()
-                .flex()
-                .gap_2()
-                .items_center()
-                .child(format!("Value: {displayed_value}"))
-                .child("(Tab to toggle)"),
+            DescriptionList::new()
+                .bordered(true)
+                .item("Key", credential.key.clone(), 1)
+                .item("Value", displayed_value, 1),
         )
         .child(
             div()
                 .flex()
                 .gap_2()
-                .child(Clipboard::new("copy-key").value(credential.key.clone()))
+                .child(key_clipboard)
                 .child("Copy key")
-                .child(Clipboard::new("copy-value").value(credential.value.clone()))
-                .child("Copy value"),
+                .child(value_clipboard)
+                .child("Copy value")
+                .child("(Tab to reveal/hide value)"),
         )
         .children(clipboard_status.map(|status| div().child(status)))
         .child(
@@ -158,7 +181,7 @@ fn render_form(
     mode: &EditMode,
     key_input: Entity<InputState>,
     value_input: Entity<InputState>,
-    value_visible: bool,
+    _value_visible: bool,
     error: Option<String>,
     _window: &mut Window,
     cx: &mut Context<AppView>,
@@ -167,40 +190,47 @@ fn render_form(
         EditMode::Add => "Add Credential",
         EditMode::Update { .. } => "Update Credential",
     };
-    let visibility_hint = if value_visible {
-        "Tab: hide value"
-    } else {
-        "Tab: reveal value"
-    };
 
     div()
         .on_action(cx.listener(AppView::cancel_credential_form))
         .flex()
         .flex_col()
         .gap_3()
-        .child(title)
         .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .on_action(cx.listener(AppView::advance_from_key_field))
-                .child("Key")
-                .child(Input::new(&key_input)),
+            GroupBox::new()
+                .title(title)
+                .outline()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .on_action(cx.listener(AppView::advance_from_key_field))
+                                .child("Key")
+                                .child(Input::new(&key_input)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .on_action(cx.listener(AppView::submit_credential_form))
+                                .on_action(cx.listener(
+                                    AppView::toggle_value_visibility_from_value_field,
+                                ))
+                                .on_action(cx.listener(AppView::move_focus_to_key_field))
+                                .child("Value")
+                                .child(Input::new(&value_input).mask_toggle())
+                                .child("(Tab also toggles reveal)"),
+                        ),
+                ),
         )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .on_action(cx.listener(AppView::submit_credential_form))
-                .on_action(cx.listener(AppView::toggle_value_visibility_from_value_field))
-                .on_action(cx.listener(AppView::move_focus_to_key_field))
-                .child("Value")
-                .child(Input::new(&value_input))
-                .child(visibility_hint),
-        )
-        .children(error.map(|message| div().text_color(gpui::red()).child(message)))
+        .children(error.map(|message| Alert::error("credential-form-error", message).banner()))
         .child(
             div()
                 .flex()
@@ -243,8 +273,8 @@ fn render_remove_confirm(
         .flex()
         .flex_col()
         .gap_3()
-        .child(format!("Remove [{}] {}?", id, key))
-        .children(error.map(|message| div().text_color(gpui::red()).child(message)))
+        .child(format!("Remove credential #{id} (\"{key}\")?"))
+        .children(error.map(|message| Alert::error("remove-confirm-error", message).banner()))
         .child(
             div()
                 .flex()
@@ -288,12 +318,12 @@ fn render_env_vars(
     let container = div()
         .flex()
         .flex_col()
-        .gap_2()
-        .child(format!("Exporting credential [{id}]"));
+        .gap_3()
+        .child(format!("Exporting credential #{id}"));
 
     if let Some(reason) = error {
         return container
-            .child(div().text_color(gpui::red()).child(reason))
+            .child(Alert::error("env-vars-error", reason).banner())
             .child(back_button)
             .into_any_element();
     }
@@ -306,15 +336,28 @@ fn render_env_vars(
     let export_line = format!("export {env_name}={displayed_value}");
     let copy_line = format!("export {env_name}={}", clipboard::shell_escape(&value));
 
+    let view = cx.entity();
+    let copy_clipboard = Clipboard::new("copy-env-line")
+        .value(copy_line)
+        .on_copied(move |_, window, cx| {
+            view.update(cx, |view, cx| view.copy_env_line(&CopyEnvLine, window, cx));
+        });
+
     container
-        .child(export_line)
-        .child("(Tab to toggle, C to re-copy)")
+        .child(
+            div()
+                .p_2()
+                .rounded_md()
+                .border_1()
+                .child(export_line),
+        )
         .child(
             div()
                 .flex()
                 .gap_2()
-                .child(Clipboard::new("copy-env-line").value(copy_line))
-                .child("Copy export line"),
+                .child(copy_clipboard)
+                .child("Copy export line")
+                .child("(Tab to reveal/hide, C to re-copy)"),
         )
         .children(clipboard_status.map(|status| div().child(status)))
         .child(back_button)

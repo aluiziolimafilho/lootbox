@@ -5,6 +5,8 @@ use gpui::{
     ParentElement, Render, Styled, Window, actions, div,
 };
 use gpui_component::input::InputState;
+use gpui_component::notification::Notification;
+use gpui_component::{Root, WindowExt as _};
 use lootbox::Credential;
 
 use crate::screens;
@@ -714,7 +716,7 @@ impl AppView {
     pub fn copy_read_view_key(
         &mut self,
         _: &CopyKey,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
@@ -730,13 +732,20 @@ impl AppView {
         };
         cx.write_to_clipboard(ClipboardItem::new_string(credential.key.clone()));
         *clipboard_status = Some("Key copied!".to_string());
+        // `push_notification` updates the Root entity, which is already being updated for the
+        // duration of this very call (we're invoked from inside an action dispatch on a view
+        // that's a child of Root); deferring avoids a "cannot update Root while it is already
+        // being updated" panic from that reentrant access.
+        window.defer(cx, |window, cx| {
+            window.push_notification(Notification::success("Key copied!").autohide(true), cx);
+        });
         cx.notify();
     }
 
     pub fn copy_read_view_value(
         &mut self,
         _: &CopyValue,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
@@ -752,6 +761,9 @@ impl AppView {
         };
         cx.write_to_clipboard(ClipboardItem::new_string(credential.value.clone()));
         *clipboard_status = Some("Value copied!".to_string());
+        window.defer(cx, |window, cx| {
+            window.push_notification(Notification::success("Value copied!").autohide(true), cx);
+        });
         cx.notify();
     }
 
@@ -817,7 +829,7 @@ impl AppView {
     pub fn copy_env_line(
         &mut self,
         _: &CopyEnvLine,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
@@ -835,6 +847,9 @@ impl AppView {
         let line = format!("export {}={}", env_name, crate::clipboard::shell_escape(value));
         cx.write_to_clipboard(ClipboardItem::new_string(line));
         *clipboard_status = Some("Copied to clipboard!".to_string());
+        window.defer(cx, |window, cx| {
+            window.push_notification(Notification::success("Copied to clipboard!").autohide(true), cx);
+        });
         cx.notify();
     }
 
@@ -925,7 +940,7 @@ impl AppView {
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match &self.screen {
+        let content = match &self.screen {
             AppScreen::NewFileConfirm => screens::new_file_confirm::render(
                 &self.file_path,
                 self.focus_handle.clone(),
@@ -987,6 +1002,12 @@ impl Render for AppView {
                 cx,
             )
             .into_any_element(),
-        }
+        };
+
+        div()
+            .relative()
+            .size_full()
+            .child(content)
+            .children(Root::render_notification_layer(window, cx))
     }
 }
