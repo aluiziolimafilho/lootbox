@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use gpui::{
-    AppContext as _, ClipboardItem, Context, Entity, FocusHandle, IntoElement, Render, Window,
-    actions,
+    AppContext as _, ClipboardItem, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
+    ParentElement, Render, Styled, Window, actions, div,
 };
 use gpui_component::input::InputState;
 use lootbox::Credential;
@@ -16,29 +16,18 @@ actions!(
         QuitApp,
         SelectPrev,
         SelectNext,
+        DeselectCredential,
         AddCredential,
         UpdateCredential,
         RemoveCredential,
-        ShowCredential,
         ExportEnv,
         ExportCsv,
         ImportCsv
     ]
 );
 actions!(remove_confirm, [ConfirmRemove, CancelRemove]);
-actions!(
-    read_view,
-    [
-        ToggleReadViewVisibility,
-        CopyKey,
-        CopyValue,
-        BackToListFromReadView
-    ]
-);
-actions!(
-    env_vars,
-    [ToggleEnvVisibility, CopyEnvLine, BackToListFromEnvVars]
-);
+actions!(read_view, [ToggleValueVisibility, CopyKey, CopyValue]);
+actions!(env_vars, [CopyEnvLine]);
 
 pub enum EditMode {
     Add,
@@ -52,27 +41,33 @@ pub enum AppScreen {
         error: Option<String>,
         is_new: bool,
     },
-    CredentialList {
+    Unlocked {
         credentials: Vec<Credential>,
-        selected: usize,
+        selected: Option<usize>,
+        detail: DetailPane,
     },
-    CredentialForm {
+    CsvForm {
+        mode: CsvMode,
+        path_input: Entity<InputState>,
+        status: Option<String>,
+        error: Option<String>,
+    },
+}
+
+pub enum DetailPane {
+    Empty,
+    Read {
+        id: usize,
+        credential: Credential,
+        value_visible: bool,
+        clipboard_status: Option<String>,
+    },
+    Form {
         mode: EditMode,
         key_input: Entity<InputState>,
         value_input: Entity<InputState>,
         value_visible: bool,
         error: Option<String>,
-    },
-    RemoveConfirm {
-        id: usize,
-        key: String,
-        error: Option<String>,
-    },
-    ReadView {
-        id: usize,
-        credential: Credential,
-        value_visible: bool,
-        clipboard_status: Option<String>,
     },
     EnvVars {
         id: usize,
@@ -82,12 +77,17 @@ pub enum AppScreen {
         clipboard_status: Option<String>,
         error: Option<String>,
     },
-    CsvForm {
-        mode: CsvMode,
-        path_input: Entity<InputState>,
-        status: Option<String>,
+    RemoveConfirm {
+        id: usize,
+        key: String,
         error: Option<String>,
     },
+}
+
+/// Row selection is disabled while editing/confirming, so the list and detail pane never
+/// disagree about which credential is "current" mid-edit.
+fn is_detail_locked(detail: &DetailPane) -> bool {
+    matches!(detail, DetailPane::Form { .. } | DetailPane::RemoveConfirm { .. })
 }
 
 #[derive(Clone, Copy)]
@@ -145,11 +145,7 @@ impl AppView {
         cx.notify();
     }
 
-    pub fn back_to_new_file_confirm(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn back_to_new_file_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window);
         self.screen = AppScreen::NewFileConfirm;
         cx.notify();
@@ -206,7 +202,7 @@ impl AppView {
             match lootbox::validate_password(&value) {
                 Ok(()) => {
                     self.password = value;
-                    self.go_to_credential_list(vec![], window, cx);
+                    self.go_to_unlocked(vec![], window, cx);
                 }
                 Err(err) => self.set_password_error(err.to_string(), cx),
             }
@@ -214,7 +210,7 @@ impl AppView {
             match lootbox::list_credentials(&self.file_path, &value) {
                 Ok(credentials) => {
                     self.password = value;
-                    self.go_to_credential_list(credentials, window, cx);
+                    self.go_to_unlocked(credentials, window, cx);
                 }
                 Err(err) => self.set_password_error(err.to_string(), cx),
             }
@@ -228,69 +224,194 @@ impl AppView {
         cx.notify();
     }
 
-    fn go_to_credential_list(
+    fn initial_detail(credentials: &[Credential]) -> (Option<usize>, DetailPane) {
+        match credentials.first() {
+            Some(credential) => (
+                Some(0),
+                DetailPane::Read {
+                    id: 1,
+                    credential: credential.clone(),
+                    value_visible: false,
+                    clipboard_status: None,
+                },
+            ),
+            None => (None, DetailPane::Empty),
+        }
+    }
+
+    fn go_to_unlocked(
         &mut self,
         credentials: Vec<Credential>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.focus_handle.focus(window);
-        self.screen = AppScreen::CredentialList {
+        let (selected, detail) = Self::initial_detail(&credentials);
+        self.screen = AppScreen::Unlocked {
             credentials,
-            selected: 0,
+            selected,
+            detail,
         };
         cx.notify();
     }
 
-    /// Reloads credentials from disk and returns to the list, clamping `desired_selected` to
-    /// the new (possibly shorter, after a remove) bounds -- mirrors the TUI's behavior of
+    /// Reloads credentials from disk and shows `desired_selected` (clamped to the new, possibly
+    /// shorter, bounds after a remove) in the detail pane -- mirrors the TUI's behavior of
     /// re-fetching after every CRUD operation rather than mutating an in-memory copy.
-    fn refresh_credential_list(
+    fn refresh_unlocked(
         &mut self,
-        desired_selected: usize,
+        desired_selected: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let credentials = lootbox::list_credentials(&self.file_path, &self.password)
-            .unwrap_or_default();
-        let selected = if credentials.is_empty() {
-            0
+        let credentials =
+            lootbox::list_credentials(&self.file_path, &self.password).unwrap_or_default();
+        self.focus_handle.focus(window);
+
+        if credentials.is_empty() {
+            self.screen = AppScreen::Unlocked {
+                credentials,
+                selected: None,
+                detail: DetailPane::Empty,
+            };
         } else {
-            desired_selected.min(credentials.len() - 1)
+            let idx = desired_selected.unwrap_or(0).min(credentials.len() - 1);
+            let detail = DetailPane::Read {
+                id: idx + 1,
+                credential: credentials[idx].clone(),
+                value_visible: false,
+                clipboard_status: None,
+            };
+            self.screen = AppScreen::Unlocked {
+                credentials,
+                selected: Some(idx),
+                detail,
+            };
+        }
+        cx.notify();
+    }
+
+    /// Reverts the detail pane to `Read` of the currently selected row (or `Empty`), discarding
+    /// whatever Form/EnvVars/RemoveConfirm content was showing. Used by every "cancel"/"back"
+    /// action, since none of them change which row is selected.
+    fn return_to_read(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let AppScreen::Unlocked { selected, .. } = &self.screen else {
+            return;
+        };
+        let selected = *selected;
+        self.refresh_unlocked(selected, window, cx);
+    }
+
+    pub fn select_credential(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let AppScreen::Unlocked {
+            credentials,
+            selected,
+            detail,
+        } = &mut self.screen
+        else {
+            return;
+        };
+        if is_detail_locked(detail) {
+            return;
+        }
+        let Some(credential) = credentials.get(index) else {
+            return;
+        };
+        *selected = Some(index);
+        *detail = DetailPane::Read {
+            id: index + 1,
+            credential: credential.clone(),
+            value_visible: false,
+            clipboard_status: None,
         };
         self.focus_handle.focus(window);
-        self.screen = AppScreen::CredentialList {
-            credentials,
-            selected,
+        cx.notify();
+    }
+
+    pub fn select_prev(&mut self, _: &SelectPrev, window: &mut Window, cx: &mut Context<Self>) {
+        let AppScreen::Unlocked {
+            selected, detail, ..
+        } = &self.screen
+        else {
+            return;
         };
-        cx.notify();
-    }
-
-    pub fn select_prev(&mut self, _: &SelectPrev, _window: &mut Window, cx: &mut Context<Self>) {
-        if let AppScreen::CredentialList { selected, .. } = &mut self.screen {
-            *selected = selected.saturating_sub(1);
+        if is_detail_locked(detail) {
+            return;
         }
-        cx.notify();
+        let Some(current) = *selected else {
+            return;
+        };
+        self.select_credential(current.saturating_sub(1), window, cx);
     }
 
-    pub fn select_next(&mut self, _: &SelectNext, _window: &mut Window, cx: &mut Context<Self>) {
-        if let AppScreen::CredentialList {
+    pub fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+        let AppScreen::Unlocked {
             credentials,
             selected,
-        } = &mut self.screen
-            && !credentials.is_empty()
-        {
-            *selected = (*selected + 1).min(credentials.len() - 1);
+            detail,
+        } = &self.screen
+        else {
+            return;
+        };
+        if is_detail_locked(detail) {
+            return;
         }
-        cx.notify();
+        let Some(current) = *selected else {
+            return;
+        };
+        if credentials.is_empty() {
+            return;
+        }
+        let next = (current + 1).min(credentials.len() - 1);
+        self.select_credential(next, window, cx);
     }
 
-    fn build_credential_form_screen(
+    /// `Escape` on the list/detail screen deselects the current row, clearing the detail pane.
+    /// Quitting from the main screen is reserved for the explicit Quit action/button (Q) --
+    /// Esc silently exiting the whole app from the hub screen was a TUI-only convenience that
+    /// doesn't fit a mouse-first app.
+    /// `Escape` on the Unlocked screen when no Input is focused. Only resolves to this action
+    /// at all when no Input is focused (Form's Value/Key fields claim a more specific keymap
+    /// context, so this never fires while editing -- see `cancel_credential_form`). Branches on
+    /// the current detail pane: RemoveConfirm/EnvVars revert to Read (same as their Cancel
+    /// button); Read with something selected clears the selection.
+    pub fn deselect_credential(
+        &mut self,
+        _: &DeselectCredential,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::Unlocked {
+            selected, detail, ..
+        } = &self.screen
+        else {
+            return;
+        };
+        let should_return_to_read =
+            matches!(detail, DetailPane::RemoveConfirm { .. } | DetailPane::EnvVars { .. });
+        let should_deselect = matches!(detail, DetailPane::Read { .. }) && selected.is_some();
+
+        if should_return_to_read {
+            self.return_to_read(window, cx);
+        } else if should_deselect {
+            if let AppScreen::Unlocked {
+                selected, detail, ..
+            } = &mut self.screen
+            {
+                *selected = None;
+                *detail = DetailPane::Empty;
+            }
+            self.focus_handle.focus(window);
+            cx.notify();
+        }
+    }
+
+    fn build_form_detail(
         mode: EditMode,
         key_value: Option<(String, String)>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> AppScreen {
+    ) -> DetailPane {
         let initial_key = key_value.as_ref().map(|(key, _)| key.clone());
         let initial_value = key_value.as_ref().map(|(_, value)| value.clone());
         let key_input = cx.new(|cx| {
@@ -308,7 +429,7 @@ impl AppView {
             state
         });
         key_input.update(cx, |state, cx| state.focus(window, cx));
-        AppScreen::CredentialForm {
+        DetailPane::Form {
             mode,
             key_input,
             value_input,
@@ -323,7 +444,17 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.screen = Self::build_credential_form_screen(EditMode::Add, None, window, cx);
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        if is_detail_locked(detail) {
+            return;
+        }
+        let form = Self::build_form_detail(EditMode::Add, None, window, cx);
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        *detail = form;
         cx.notify();
     }
 
@@ -333,24 +464,30 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialList {
+        let AppScreen::Unlocked {
             credentials,
             selected,
+            detail,
         } = &self.screen
         else {
             return;
         };
-        let Some(credential) = credentials.get(*selected) else {
+        if is_detail_locked(detail) {
+            return;
+        }
+        let Some(idx) = *selected else {
             return;
         };
-        let id = *selected + 1;
+        let Some(credential) = credentials.get(idx) else {
+            return;
+        };
+        let id = idx + 1;
         let key_value = (credential.key.clone(), credential.value.clone());
-        self.screen = Self::build_credential_form_screen(
-            EditMode::Update { id },
-            Some(key_value),
-            window,
-            cx,
-        );
+        let form = Self::build_form_detail(EditMode::Update { id }, Some(key_value), window, cx);
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        *detail = form;
         cx.notify();
     }
 
@@ -360,20 +497,32 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialList {
+        let AppScreen::Unlocked {
             credentials,
             selected,
+            detail,
         } = &self.screen
         else {
             return;
         };
-        let Some(credential) = credentials.get(*selected) else {
+        if is_detail_locked(detail) {
+            return;
+        }
+        let Some(idx) = *selected else {
             return;
         };
+        let Some(credential) = credentials.get(idx) else {
+            return;
+        };
+        let id = idx + 1;
+        let key = credential.key.clone();
         self.focus_handle.focus(window);
-        self.screen = AppScreen::RemoveConfirm {
-            id: *selected + 1,
-            key: credential.key.clone(),
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        *detail = DetailPane::RemoveConfirm {
+            id,
+            key,
             error: None,
         };
         cx.notify();
@@ -386,7 +535,10 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialForm { value_input, .. } = &self.screen else {
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        let DetailPane::Form { value_input, .. } = detail else {
             return;
         };
         value_input.update(cx, |state, cx| state.focus(window, cx));
@@ -402,11 +554,14 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialForm {
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        let DetailPane::Form {
             value_input,
             value_visible,
             ..
-        } = &mut self.screen
+        } = detail
         else {
             return;
         };
@@ -424,27 +579,23 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialForm { key_input, .. } = &self.screen else {
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        let DetailPane::Form { key_input, .. } = detail else {
             return;
         };
         key_input.update(cx, |state, cx| state.focus(window, cx));
     }
 
-    /// `Escape` from either field cancels the form and returns to the list, matching the TUI.
+    /// `Escape` from either field cancels the form and returns to the Read pane.
     pub fn cancel_credential_form(
         &mut self,
         _: &gpui_component::input::Escape,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialForm { mode, .. } = &self.screen else {
-            return;
-        };
-        let selected = match mode {
-            EditMode::Add => 0,
-            EditMode::Update { id } => id.saturating_sub(1),
-        };
-        self.refresh_credential_list(selected, window, cx);
+        self.return_to_read(window, cx);
     }
 
     /// `Enter` on the Value field submits the form -- always sends `Some(current_box_contents)`
@@ -458,26 +609,31 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::CredentialForm {
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        let DetailPane::Form {
             mode,
             key_input,
             value_input,
             ..
-        } = &self.screen
+        } = detail
         else {
             return;
+        };
+        let update_id = match mode {
+            EditMode::Add => None,
+            EditMode::Update { id } => Some(*id),
         };
         let key = key_input.read(cx).value().to_string();
         let value = value_input.read(cx).value().to_string();
 
-        let result = match mode {
-            EditMode::Add => {
-                lootbox::save_credential(&self.file_path, &self.password, &key, &value)
-            }
-            EditMode::Update { id } => lootbox::update_credential(
+        let result = match update_id {
+            None => lootbox::save_credential(&self.file_path, &self.password, &key, &value),
+            Some(id) => lootbox::update_credential(
                 &self.file_path,
                 &self.password,
-                *id,
+                id,
                 Some(key.as_str()),
                 Some(value.as_str()),
             ),
@@ -485,14 +641,15 @@ impl AppView {
 
         match result {
             Ok(()) => {
-                let selected = match mode {
-                    EditMode::Add => usize::MAX, // clamps to the new last row
-                    EditMode::Update { id } => id.saturating_sub(1),
-                };
-                self.refresh_credential_list(selected, window, cx);
+                let desired = update_id
+                    .map(|id| id.saturating_sub(1))
+                    .unwrap_or(usize::MAX); // clamps to the new last row when adding
+                self.refresh_unlocked(Some(desired), window, cx);
             }
             Err(err) => {
-                if let AppScreen::CredentialForm { error, .. } = &mut self.screen {
+                if let AppScreen::Unlocked { detail, .. } = &mut self.screen
+                    && let DetailPane::Form { error, .. } = detail
+                {
                     *error = Some(err.to_string());
                 }
                 cx.notify();
@@ -506,14 +663,19 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::RemoveConfirm { id, .. } = &self.screen else {
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        let DetailPane::RemoveConfirm { id, .. } = detail else {
             return;
         };
         let id = *id;
         match lootbox::remove_credential(&self.file_path, &self.password, id) {
-            Ok(()) => self.refresh_credential_list(id.saturating_sub(1), window, cx),
+            Ok(()) => self.refresh_unlocked(Some(id.saturating_sub(1)), window, cx),
             Err(err) => {
-                if let AppScreen::RemoveConfirm { error, .. } = &mut self.screen {
+                if let AppScreen::Unlocked { detail, .. } = &mut self.screen
+                    && let DetailPane::RemoveConfirm { error, .. } = detail
+                {
                     *error = Some(err.to_string());
                 }
                 cx.notify();
@@ -527,46 +689,24 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::RemoveConfirm { id, .. } = &self.screen else {
-            return;
-        };
-        self.refresh_credential_list(id.saturating_sub(1), window, cx);
+        self.return_to_read(window, cx);
     }
 
-    pub fn open_read_view(
+    /// `Tab` toggles whichever masked value is currently showing -- Read's credential value or
+    /// EnvVars' export value. A single action (rather than one per detail kind) avoids binding
+    /// "tab" twice in the same key context, since only one of the two is ever active at once.
+    pub fn toggle_value_visibility(
         &mut self,
-        _: &ShowCredential,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let AppScreen::CredentialList {
-            credentials,
-            selected,
-        } = &self.screen
-        else {
-            return;
-        };
-        let Some(credential) = credentials.get(*selected) else {
-            return;
-        };
-        self.focus_handle.focus(window);
-        self.screen = AppScreen::ReadView {
-            id: *selected + 1,
-            credential: credential.clone(),
-            value_visible: false,
-            clipboard_status: None,
-        };
-        cx.notify();
-    }
-
-    pub fn toggle_read_view_visibility(
-        &mut self,
-        _: &ToggleReadViewVisibility,
+        _: &ToggleValueVisibility,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let AppScreen::ReadView { value_visible, .. } = &mut self.screen {
-            *value_visible = !*value_visible;
+        if let AppScreen::Unlocked { detail, .. } = &mut self.screen {
+            match detail {
+                DetailPane::Read { value_visible, .. } => *value_visible = !*value_visible,
+                DetailPane::EnvVars { value_visible, .. } => *value_visible = !*value_visible,
+                _ => return,
+            }
         }
         cx.notify();
     }
@@ -577,11 +717,14 @@ impl AppView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::ReadView {
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        let DetailPane::Read {
             credential,
             clipboard_status,
             ..
-        } = &mut self.screen
+        } = detail
         else {
             return;
         };
@@ -596,11 +739,14 @@ impl AppView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::ReadView {
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        let DetailPane::Read {
             credential,
             clipboard_status,
             ..
-        } = &mut self.screen
+        } = detail
         else {
             return;
         };
@@ -609,35 +755,25 @@ impl AppView {
         cx.notify();
     }
 
-    pub fn back_to_list_from_read_view(
-        &mut self,
-        _: &BackToListFromReadView,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let AppScreen::ReadView { id, .. } = &self.screen else {
-            return;
-        };
-        self.refresh_credential_list(id.saturating_sub(1), window, cx);
-    }
-
     pub fn open_env_vars(&mut self, _: &ExportEnv, window: &mut Window, cx: &mut Context<Self>) {
-        let AppScreen::CredentialList {
-            credentials,
-            selected,
+        let AppScreen::Unlocked {
+            selected, detail, ..
         } = &self.screen
         else {
             return;
         };
-        if credentials.get(*selected).is_none() {
+        if is_detail_locked(detail) {
             return;
         }
-        let id = *selected + 1;
+        let Some(idx) = *selected else {
+            return;
+        };
+        let id = idx + 1;
 
-        let screen = match lootbox::generate_env_vars(&self.file_path, &self.password, id) {
+        let new_detail = match lootbox::generate_env_vars(&self.file_path, &self.password, id) {
             Ok(mut result) => {
                 if let Some(entry) = result.created.pop() {
-                    AppScreen::EnvVars {
+                    DetailPane::EnvVars {
                         id,
                         env_name: entry.env_name,
                         value: entry.value,
@@ -646,7 +782,7 @@ impl AppView {
                         error: None,
                     }
                 } else if let Some(invalid) = result.invalid.pop() {
-                    AppScreen::EnvVars {
+                    DetailPane::EnvVars {
                         id,
                         env_name: String::new(),
                         value: String::new(),
@@ -658,7 +794,7 @@ impl AppView {
                     return;
                 }
             }
-            Err(err) => AppScreen::EnvVars {
+            Err(err) => DetailPane::EnvVars {
                 id,
                 env_name: String::new(),
                 value: String::new(),
@@ -669,19 +805,10 @@ impl AppView {
         };
 
         self.focus_handle.focus(window);
-        self.screen = screen;
-        cx.notify();
-    }
-
-    pub fn toggle_env_visibility(
-        &mut self,
-        _: &ToggleEnvVisibility,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let AppScreen::EnvVars { value_visible, .. } = &mut self.screen {
-            *value_visible = !*value_visible;
-        }
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        *detail = new_detail;
         cx.notify();
     }
 
@@ -693,12 +820,15 @@ impl AppView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let AppScreen::EnvVars {
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        let DetailPane::EnvVars {
             env_name,
             value,
             clipboard_status,
             ..
-        } = &mut self.screen
+        } = detail
         else {
             return;
         };
@@ -708,20 +838,13 @@ impl AppView {
         cx.notify();
     }
 
-    pub fn back_to_list_from_env_vars(
-        &mut self,
-        _: &BackToListFromEnvVars,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let AppScreen::EnvVars { id, .. } = &self.screen else {
-            return;
-        };
-        self.refresh_credential_list(id.saturating_sub(1), window, cx);
+    pub fn back_to_list_from_env_vars(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.return_to_read(window, cx);
     }
 
     fn build_csv_form_screen(mode: CsvMode, window: &mut Window, cx: &mut Context<Self>) -> AppScreen {
-        let path_input = cx.new(|cx| InputState::new(window, cx).placeholder("Enter CSV file path..."));
+        let path_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Enter CSV file path..."));
         path_input.update(cx, |state, cx| state.focus(window, cx));
         AppScreen::CsvForm {
             mode,
@@ -760,7 +883,7 @@ impl AppView {
             return;
         };
         if status.is_some() {
-            self.refresh_credential_list(0, window, cx);
+            self.refresh_unlocked(None, window, cx);
             return;
         }
 
@@ -796,7 +919,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.refresh_credential_list(0, window, cx);
+        self.refresh_unlocked(None, window, cx);
     }
 }
 
@@ -816,76 +939,40 @@ impl Render for AppView {
                 is_new,
             } => screens::password::render(input.clone(), error.clone(), *is_new, window, cx)
                 .into_any_element(),
-            AppScreen::CredentialList {
+            AppScreen::Unlocked {
                 credentials,
                 selected,
-            } => screens::credential_list::render(
-                credentials,
-                *selected,
-                self.focus_handle.clone(),
-                window,
-                cx,
-            )
-            .into_any_element(),
-            AppScreen::CredentialForm {
-                mode,
-                key_input,
-                value_input,
-                value_visible,
-                error,
-            } => screens::credential_form::render(
-                mode,
-                key_input.clone(),
-                value_input.clone(),
-                *value_visible,
-                error.clone(),
-                window,
-                cx,
-            )
-            .into_any_element(),
-            AppScreen::RemoveConfirm { id, key, error } => screens::remove_confirm::render(
-                *id,
-                key.clone(),
-                error.clone(),
-                self.focus_handle.clone(),
-                window,
-                cx,
-            )
-            .into_any_element(),
-            AppScreen::ReadView {
-                id,
-                credential,
-                value_visible,
-                clipboard_status,
-            } => screens::read_view::render(
-                *id,
-                credential.clone(),
-                *value_visible,
-                clipboard_status.clone(),
-                self.focus_handle.clone(),
-                window,
-                cx,
-            )
-            .into_any_element(),
-            AppScreen::EnvVars {
-                id,
-                env_name,
-                value,
-                value_visible,
-                clipboard_status,
-                error,
-            } => screens::env_vars::render(
-                *id,
-                env_name.clone(),
-                value.clone(),
-                *value_visible,
-                clipboard_status.clone(),
-                error.clone(),
-                self.focus_handle.clone(),
-                window,
-                cx,
-            )
-            .into_any_element(),
+                detail,
+            } => div()
+                .key_context(screens::credential_list::CONTEXT)
+                .track_focus(&self.focus_handle)
+                .on_action(cx.listener(AppView::quit_app))
+                .on_action(cx.listener(AppView::select_prev))
+                .on_action(cx.listener(AppView::select_next))
+                .on_action(cx.listener(AppView::deselect_credential))
+                .on_action(cx.listener(AppView::open_add_form))
+                .on_action(cx.listener(AppView::open_update_form))
+                .on_action(cx.listener(AppView::open_remove_confirm))
+                .on_action(cx.listener(AppView::open_env_vars))
+                .on_action(cx.listener(AppView::open_export_csv))
+                .on_action(cx.listener(AppView::open_import_csv))
+                .on_action(cx.listener(AppView::toggle_value_visibility))
+                .on_action(cx.listener(AppView::copy_read_view_key))
+                .on_action(cx.listener(AppView::copy_read_view_value))
+                .on_action(cx.listener(AppView::copy_env_line))
+                .on_action(cx.listener(AppView::confirm_remove))
+                .flex()
+                .flex_row()
+                .size_full()
+                .child(screens::credential_list::render(
+                    credentials,
+                    *selected,
+                    is_detail_locked(detail),
+                    window,
+                    cx,
+                ))
+                .child(screens::detail_pane::render(detail, window, cx))
+                .into_any_element(),
             AppScreen::CsvForm {
                 mode,
                 path_input,

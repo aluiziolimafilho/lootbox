@@ -4,10 +4,7 @@ use std::rc::Rc;
 
 use gpui::{AppContext as _, Entity, Render, TestAppContext, WindowHandle, WindowOptions};
 use gpui_component::Root;
-use lootbox_gui::app::{
-    AddCredential, AppScreen, AppView, ConfirmNewFile, ExportCsv, ExportEnv, RemoveCredential,
-    ShowCredential,
-};
+use lootbox_gui::app::{AddCredential, AppScreen, AppView, ConfirmNewFile, ExportCsv, ExportEnv, RemoveCredential};
 
 fn scratch_vault_path() -> PathBuf {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -71,31 +68,23 @@ fn render_password_screen_does_not_panic(cx: &mut TestAppContext) {
         .unwrap();
 }
 
+/// A brand new vault has zero credentials, so the right panel renders `DetailPane::Empty` --
+/// a distinct render path from `Read` that didn't exist before the split-pane redesign.
 #[gpui::test]
-fn render_empty_credential_list_does_not_panic(cx: &mut TestAppContext) {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
-        .expect("seed vault");
-
+fn render_empty_unlocked_does_not_panic(cx: &mut TestAppContext) {
+    let file_path = scratch_vault_path();
     let (window, view) = open_test_window(cx, file_path);
 
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
+                view.confirm_new_file(&ConfirmNewFile, window, cx);
                 let AppScreen::Password { input, .. } = &view.screen else {
                     panic!("expected Password screen");
                 };
                 input.update(cx, |state, cx| {
-                    state.set_value("correct-password", window, cx)
+                    state.set_value("a-valid-password", window, cx)
                 });
-            });
-        })
-        .unwrap();
-
-    window
-        .update(cx, |_, window, cx| {
-            view.update(cx, |view, cx| {
                 view.submit_password(
                     &gpui_component::input::Enter { secondary: false },
                     window,
@@ -167,8 +156,10 @@ fn render_remove_confirm_does_not_panic(cx: &mut TestAppContext) {
         .unwrap();
 }
 
+/// Unlocking with at least one credential auto-selects and shows it, so this also covers the
+/// `DetailPane::Read` render path without a separate "open read view" step.
 #[gpui::test]
-fn render_read_view_does_not_panic(cx: &mut TestAppContext) {
+fn render_unlocked_with_read_detail_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
     lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
@@ -190,7 +181,6 @@ fn render_read_view_does_not_panic(cx: &mut TestAppContext) {
                     window,
                     cx,
                 );
-                view.open_read_view(&ShowCredential, window, cx);
                 view.render(window, cx);
             });
         })

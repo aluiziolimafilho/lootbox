@@ -6,10 +6,9 @@ use gpui::{
 use gpui_component::Root;
 use gpui_component_assets::Assets;
 use lootbox_gui::app::{
-    AddCredential, AppView, BackToListFromEnvVars, BackToListFromReadView, CancelNewFile,
-    CancelRemove, ConfirmNewFile, ConfirmRemove, CopyEnvLine, CopyKey, CopyValue, ExportCsv,
-    ExportEnv, ImportCsv, QuitApp, RemoveCredential, SelectNext, SelectPrev, ShowCredential,
-    ToggleEnvVisibility, ToggleReadViewVisibility, UpdateCredential,
+    AddCredential, AppView, CancelNewFile, ConfirmNewFile, ConfirmRemove, CopyEnvLine, CopyKey,
+    CopyValue, DeselectCredential, ExportCsv, ExportEnv, ImportCsv, QuitApp, RemoveCredential,
+    SelectNext, SelectPrev, ToggleValueVisibility, UpdateCredential,
 };
 use lootbox_gui::screens;
 
@@ -36,37 +35,32 @@ fn main() {
             ),
             KeyBinding::new("q", CancelNewFile, Some(screens::new_file_confirm::CONTEXT)),
             KeyBinding::new("q", QuitApp, Some(screens::credential_list::CONTEXT)),
-            KeyBinding::new("escape", QuitApp, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("up", SelectPrev, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("down", SelectNext, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new(
+                "escape",
+                DeselectCredential,
+                Some(screens::credential_list::CONTEXT),
+            ),
             KeyBinding::new("a", AddCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("u", UpdateCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("r", RemoveCredential, Some(screens::credential_list::CONTEXT)),
-            KeyBinding::new("s", ShowCredential, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("e", ExportEnv, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("x", ExportCsv, Some(screens::credential_list::CONTEXT)),
             KeyBinding::new("i", ImportCsv, Some(screens::credential_list::CONTEXT)),
-            KeyBinding::new("enter", ConfirmRemove, Some(screens::remove_confirm::CONTEXT)),
-            KeyBinding::new("escape", CancelRemove, Some(screens::remove_confirm::CONTEXT)),
+            KeyBinding::new(
+                "enter",
+                ConfirmRemove,
+                Some(screens::credential_list::CONTEXT),
+            ),
             KeyBinding::new(
                 "tab",
-                ToggleReadViewVisibility,
-                Some(screens::read_view::CONTEXT),
+                ToggleValueVisibility,
+                Some(screens::credential_list::CONTEXT),
             ),
-            KeyBinding::new("k", CopyKey, Some(screens::read_view::CONTEXT)),
-            KeyBinding::new("v", CopyValue, Some(screens::read_view::CONTEXT)),
-            KeyBinding::new(
-                "escape",
-                BackToListFromReadView,
-                Some(screens::read_view::CONTEXT),
-            ),
-            KeyBinding::new("tab", ToggleEnvVisibility, Some(screens::env_vars::CONTEXT)),
-            KeyBinding::new("c", CopyEnvLine, Some(screens::env_vars::CONTEXT)),
-            KeyBinding::new(
-                "escape",
-                BackToListFromEnvVars,
-                Some(screens::env_vars::CONTEXT),
-            ),
+            KeyBinding::new("k", CopyKey, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("v", CopyValue, Some(screens::credential_list::CONTEXT)),
+            KeyBinding::new("c", CopyEnvLine, Some(screens::credential_list::CONTEXT)),
         ]);
 
         let bounds = Bounds::centered(None, size(px(900.0), px(640.0)), cx);

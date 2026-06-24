@@ -5,10 +5,10 @@ use std::rc::Rc;
 use gpui::{AppContext as _, Entity, TestAppContext, WindowHandle, WindowOptions};
 use gpui_component::Root;
 use lootbox_gui::app::{
-    AddCredential, AppScreen, AppView, BackToListFromEnvVars, BackToListFromReadView,
-    CancelNewFile, CancelRemove, ConfirmNewFile, ConfirmRemove, CopyKey, CopyValue, EditMode,
-    ExportCsv, ExportEnv, ImportCsv, RemoveCredential, SelectNext, SelectPrev, ShowCredential,
-    ToggleEnvVisibility, ToggleReadViewVisibility, UpdateCredential,
+    AddCredential, AppScreen, AppView, CancelNewFile, ConfirmNewFile, ConfirmRemove,
+    CopyEnvLine, CopyKey, CopyValue, DeselectCredential, DetailPane, EditMode, ExportCsv,
+    ExportEnv, ImportCsv, RemoveCredential, SelectNext, SelectPrev, ToggleValueVisibility,
+    UpdateCredential,
 };
 
 const VAULT_PASSWORD: &str = "correct-password";
@@ -23,7 +23,7 @@ fn scratch_vault_path() -> PathBuf {
 }
 
 /// Seeds a vault with `count` credentials (`key1`..`keyN`, `value1`..`valueN`) and returns its
-/// path, for tests that need a non-empty `CredentialList` to act on.
+/// path, for tests that need a non-empty unlocked vault to act on.
 fn seed_vault(count: usize) -> PathBuf {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("vault.enc");
@@ -40,7 +40,7 @@ fn seed_vault(count: usize) -> PathBuf {
     path
 }
 
-/// Drives `open_test_window` through to an unlocked, populated `CredentialList` screen.
+/// Drives `open_test_window` through to an unlocked `AppScreen::Unlocked` screen.
 fn open_unlocked_window(
     cx: &mut TestAppContext,
     file_path: PathBuf,
@@ -183,7 +183,7 @@ fn password_new_vault_rejects_short_password_and_sets_error(cx: &mut TestAppCont
 }
 
 #[gpui::test]
-fn password_new_vault_valid_password_transitions_to_empty_list(cx: &mut TestAppContext) {
+fn password_new_vault_valid_password_transitions_to_empty_unlocked(cx: &mut TestAppContext) {
     let file_path = scratch_vault_path();
     let (window, view) = open_test_window(cx, file_path);
 
@@ -221,17 +221,23 @@ fn password_new_vault_valid_password_transitions_to_empty_list(cx: &mut TestAppC
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to land on an empty CredentialList screen");
+        let AppScreen::Unlocked {
+            credentials,
+            selected,
+            detail,
+        } = &view.screen
+        else {
+            panic!("expected to land on Unlocked");
         };
         assert!(credentials.is_empty());
+        assert_eq!(*selected, None);
+        assert!(matches!(detail, DetailPane::Empty));
         assert_eq!(view.password, "a-valid-password");
     });
 }
 
 #[gpui::test]
 fn password_unlock_wrong_password_sets_error(cx: &mut TestAppContext) {
-    // Save a real credential first via lootbox-core, so the file exists on unlock.
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
     lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
@@ -280,7 +286,9 @@ fn password_unlock_wrong_password_sets_error(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn password_unlock_correct_password_loads_existing_credentials(cx: &mut TestAppContext) {
+fn password_unlock_correct_password_loads_existing_credentials_and_shows_first(
+    cx: &mut TestAppContext,
+) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
     lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
@@ -314,11 +322,22 @@ fn password_unlock_correct_password_loads_existing_credentials(cx: &mut TestAppC
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to land on CredentialList screen");
+        let AppScreen::Unlocked {
+            credentials,
+            selected,
+            detail,
+        } = &view.screen
+        else {
+            panic!("expected to land on Unlocked");
         };
         assert_eq!(credentials.len(), 1);
         assert_eq!(credentials[0].key, "api_key");
+        assert_eq!(*selected, Some(0));
+        let DetailPane::Read { id, credential, .. } = detail else {
+            panic!("expected the first credential to auto-load into the Read detail pane");
+        };
+        assert_eq!(*id, 1);
+        assert_eq!(credential.key, "api_key");
         assert_eq!(view.password, "correct-password");
     });
 }
@@ -335,10 +354,10 @@ fn select_next_and_prev_clamp_to_bounds(cx: &mut TestAppContext) {
         })
         .unwrap();
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { selected, .. } = &view.screen else {
-            panic!("expected CredentialList");
+        let AppScreen::Unlocked { selected, .. } = &view.screen else {
+            panic!("expected Unlocked");
         };
-        assert_eq!(*selected, 0);
+        assert_eq!(*selected, Some(0));
     });
 
     window
@@ -351,15 +370,73 @@ fn select_next_and_prev_clamp_to_bounds(cx: &mut TestAppContext) {
         })
         .unwrap();
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { selected, .. } = &view.screen else {
-            panic!("expected CredentialList");
+        let AppScreen::Unlocked {
+            selected, detail, ..
+        } = &view.screen
+        else {
+            panic!("expected Unlocked");
         };
-        assert_eq!(*selected, 2);
+        assert_eq!(*selected, Some(2));
+        let DetailPane::Read { id, .. } = detail else {
+            panic!("selecting should switch the detail pane to Read");
+        };
+        assert_eq!(*id, 3);
     });
 }
 
 #[gpui::test]
-fn add_credential_success_appends_to_list_and_returns_to_list(cx: &mut TestAppContext) {
+fn select_credential_is_a_noop_while_form_is_open(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(3));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_add_form(&AddCredential, window, cx);
+                // Selection changes must be ignored while the Add form is open.
+                view.select_credential(2, window, cx);
+                view.select_next(&SelectNext, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::Unlocked {
+            selected, detail, ..
+        } = &view.screen
+        else {
+            panic!("expected Unlocked");
+        };
+        assert_eq!(*selected, Some(0), "selection must not change while editing");
+        assert!(matches!(detail, DetailPane::Form { .. }), "form must stay open");
+    });
+}
+
+#[gpui::test]
+fn deselect_credential_clears_selection_from_read(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(2));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.deselect_credential(&DeselectCredential, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::Unlocked {
+            selected, detail, ..
+        } = &view.screen
+        else {
+            panic!("expected Unlocked");
+        };
+        assert_eq!(*selected, None);
+        assert!(matches!(detail, DetailPane::Empty));
+    });
+}
+
+#[gpui::test]
+fn add_credential_success_appends_to_list_and_selects_new_row(cx: &mut TestAppContext) {
     let (window, view) = open_unlocked_window(cx, seed_vault(1));
 
     window
@@ -373,13 +450,16 @@ fn add_credential_success_appends_to_list_and_returns_to_list(cx: &mut TestAppCo
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                let AppScreen::CredentialForm {
+                let AppScreen::Unlocked { detail, .. } = &view.screen else {
+                    panic!("expected Unlocked");
+                };
+                let DetailPane::Form {
                     key_input,
                     value_input,
                     ..
-                } = &view.screen
+                } = detail
                 else {
-                    panic!("expected CredentialForm");
+                    panic!("expected Form detail pane");
                 };
                 key_input.update(cx, |state, cx| state.set_value("key2", window, cx));
                 value_input.update(cx, |state, cx| state.set_value("value2", window, cx));
@@ -400,16 +480,21 @@ fn add_credential_success_appends_to_list_and_returns_to_list(cx: &mut TestAppCo
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList {
+        let AppScreen::Unlocked {
             credentials,
             selected,
+            detail,
         } = &view.screen
         else {
-            panic!("expected to return to CredentialList after a successful add");
+            panic!("expected to return to Unlocked after a successful add");
         };
         assert_eq!(credentials.len(), 2);
         assert_eq!(credentials[1].key, "key2");
-        assert_eq!(*selected, 1, "selection should land on the newly added row");
+        assert_eq!(*selected, Some(1), "selection should land on the newly added row");
+        let DetailPane::Read { credential, .. } = detail else {
+            panic!("expected Read detail pane after add");
+        };
+        assert_eq!(credential.key, "key2");
     });
 }
 
@@ -428,8 +513,11 @@ fn add_credential_empty_key_is_rejected_with_inline_error(cx: &mut TestAppContex
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                let AppScreen::CredentialForm { value_input, .. } = &view.screen else {
-                    panic!("expected CredentialForm");
+                let AppScreen::Unlocked { detail, .. } = &view.screen else {
+                    panic!("expected Unlocked");
+                };
+                let DetailPane::Form { value_input, .. } = detail else {
+                    panic!("expected Form detail pane");
                 };
                 // Leave the key field empty; only fill in a value.
                 value_input.update(cx, |state, cx| state.set_value("some-value", window, cx));
@@ -450,8 +538,11 @@ fn add_credential_empty_key_is_rejected_with_inline_error(cx: &mut TestAppContex
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialForm { error, .. } = &view.screen else {
-            panic!("expected to remain on CredentialForm after a validation error");
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Form { error, .. } = detail else {
+            panic!("expected to remain on Form after a validation error");
         };
         assert!(error.is_some());
     });
@@ -471,8 +562,17 @@ fn update_credential_changes_key_and_value(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, cx| {
-        let AppScreen::CredentialForm { mode, key_input, value_input, .. } = &view.screen else {
-            panic!("expected CredentialForm");
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Form {
+            mode,
+            key_input,
+            value_input,
+            ..
+        } = detail
+        else {
+            panic!("expected Form detail pane");
         };
         assert!(matches!(mode, EditMode::Update { id: 2 }));
         assert_eq!(key_input.read(cx).value().to_string(), "key2");
@@ -482,13 +582,16 @@ fn update_credential_changes_key_and_value(cx: &mut TestAppContext) {
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                let AppScreen::CredentialForm {
+                let AppScreen::Unlocked { detail, .. } = &view.screen else {
+                    panic!("expected Unlocked");
+                };
+                let DetailPane::Form {
                     key_input,
                     value_input,
                     ..
-                } = &view.screen
+                } = detail
                 else {
-                    panic!("expected CredentialForm");
+                    panic!("expected Form detail pane");
                 };
                 key_input.update(cx, |state, cx| state.set_value("key2-renamed", window, cx));
                 value_input.update(cx, |state, cx| {
@@ -511,8 +614,8 @@ fn update_credential_changes_key_and_value(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to return to CredentialList after a successful update");
+        let AppScreen::Unlocked { credentials, .. } = &view.screen else {
+            panic!("expected to return to Unlocked after a successful update");
         };
         assert_eq!(credentials.len(), 2);
         assert_eq!(credentials[1].key, "key2-renamed");
@@ -538,8 +641,11 @@ fn update_credential_cleared_value_is_rejected(cx: &mut TestAppContext) {
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                let AppScreen::CredentialForm { value_input, .. } = &view.screen else {
-                    panic!("expected CredentialForm");
+                let AppScreen::Unlocked { detail, .. } = &view.screen else {
+                    panic!("expected Unlocked");
+                };
+                let DetailPane::Form { value_input, .. } = detail else {
+                    panic!("expected Form detail pane");
                 };
                 value_input.update(cx, |state, cx| state.set_value("", window, cx));
             });
@@ -559,11 +665,14 @@ fn update_credential_cleared_value_is_rejected(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, cx| {
-        let AppScreen::CredentialForm {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Form {
             error, value_input, ..
-        } = &view.screen
+        } = detail
         else {
-            panic!("expected to remain on CredentialForm after a validation error");
+            panic!("expected to remain on Form after a validation error");
         };
         assert!(error.is_some(), "expected a non-empty-value validation error");
         assert_eq!(
@@ -571,6 +680,38 @@ fn update_credential_cleared_value_is_rejected(cx: &mut TestAppContext) {
             "",
             "cleared field must not silently revert to the old value"
         );
+    });
+}
+
+#[gpui::test]
+fn cancel_add_form_reverts_to_previous_selection(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(2));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.select_next(&SelectNext, window, cx); // select row index 1 ("key2")
+                view.open_add_form(&AddCredential, window, cx);
+                view.cancel_credential_form(&gpui_component::input::Escape, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::Unlocked {
+            credentials,
+            selected,
+            detail,
+        } = &view.screen
+        else {
+            panic!("expected Unlocked");
+        };
+        assert_eq!(credentials.len(), 2, "cancel must not create anything");
+        assert_eq!(*selected, Some(1), "selection should be unchanged after cancel");
+        let DetailPane::Read { credential, .. } = detail else {
+            panic!("expected to revert to Read of the previously selected row");
+        };
+        assert_eq!(credential.key, "key2");
     });
 }
 
@@ -587,8 +728,11 @@ fn remove_credential_confirm_removes_and_shifts_ids_down(cx: &mut TestAppContext
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::RemoveConfirm { id, key, .. } = &view.screen else {
-            panic!("expected RemoveConfirm");
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::RemoveConfirm { id, key, .. } = detail else {
+            panic!("expected RemoveConfirm detail pane");
         };
         assert_eq!(*id, 1);
         assert_eq!(key, "key1");
@@ -603,8 +747,8 @@ fn remove_credential_confirm_removes_and_shifts_ids_down(cx: &mut TestAppContext
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to return to CredentialList after a successful remove");
+        let AppScreen::Unlocked { credentials, .. } = &view.screen else {
+            panic!("expected to return to Unlocked after a successful remove");
         };
         assert_eq!(credentials.len(), 2);
         assert_eq!(credentials[0].key, "key2", "key2 should have shifted to id 1");
@@ -620,16 +764,41 @@ fn remove_credential_cancel_returns_to_list_unchanged(cx: &mut TestAppContext) {
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
                 view.open_remove_confirm(&RemoveCredential, window, cx);
-                view.cancel_remove(&CancelRemove, window, cx);
+                view.cancel_remove(&lootbox_gui::app::CancelRemove, window, cx);
             });
         })
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to return to CredentialList");
+        let AppScreen::Unlocked { credentials, .. } = &view.screen else {
+            panic!("expected to return to Unlocked");
         };
         assert_eq!(credentials.len(), 2, "cancel must not remove anything");
+    });
+}
+
+#[gpui::test]
+fn deselect_escape_returns_from_remove_confirm_to_read(cx: &mut TestAppContext) {
+    let (window, view) = open_unlocked_window(cx, seed_vault(2));
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_remove_confirm(&RemoveCredential, window, cx);
+                view.deselect_credential(&DeselectCredential, window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        let AppScreen::Unlocked {
+            credentials, detail, ..
+        } = &view.screen
+        else {
+            panic!("expected Unlocked");
+        };
+        assert_eq!(credentials.len(), 2, "Escape on RemoveConfirm must not remove anything");
+        assert!(matches!(detail, DetailPane::Read { .. }));
     });
 }
 
@@ -662,34 +831,32 @@ fn list_actions_noop_when_credentials_empty(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, _| {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
         assert!(
-            matches!(view.screen, AppScreen::CredentialList { .. }),
-            "Update/Remove on an empty list must stay on CredentialList, not panic or transition"
+            matches!(detail, DetailPane::Empty),
+            "Update/Remove on an empty list must stay Empty, not panic or transition"
         );
     });
 }
 
 #[gpui::test]
-fn show_credential_tab_toggles_value_visibility(cx: &mut TestAppContext) {
+fn select_credential_toggle_value_visibility(cx: &mut TestAppContext) {
     let (window, view) = open_unlocked_window(cx, seed_vault(1));
 
-    window
-        .update(cx, |_, window, cx| {
-            view.update(cx, |view, cx| {
-                view.open_read_view(&ShowCredential, window, cx);
-            });
-        })
-        .unwrap();
-
     view.update(cx, |view, _| {
-        let AppScreen::ReadView {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Read {
             id,
             credential,
             value_visible,
             ..
-        } = &view.screen
+        } = detail
         else {
-            panic!("expected ReadView");
+            panic!("expected Read detail pane");
         };
         assert_eq!(*id, 1);
         assert_eq!(credential.key, "key1");
@@ -699,38 +866,43 @@ fn show_credential_tab_toggles_value_visibility(cx: &mut TestAppContext) {
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                view.toggle_read_view_visibility(&ToggleReadViewVisibility, window, cx);
+                view.toggle_value_visibility(&ToggleValueVisibility, window, cx);
             });
         })
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::ReadView { value_visible, .. } = &view.screen else {
-            panic!("expected ReadView");
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Read { value_visible, .. } = detail else {
+            panic!("expected Read detail pane");
         };
         assert!(*value_visible, "Tab should reveal the value");
     });
 }
 
 #[gpui::test]
-fn show_credential_copy_key_and_value_set_clipboard_status(cx: &mut TestAppContext) {
+fn copy_key_and_value_set_clipboard_status(cx: &mut TestAppContext) {
     let (window, view) = open_unlocked_window(cx, seed_vault(1));
 
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                view.open_read_view(&ShowCredential, window, cx);
                 view.copy_read_view_key(&CopyKey, window, cx);
             });
         })
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::ReadView {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Read {
             clipboard_status, ..
-        } = &view.screen
+        } = detail
         else {
-            panic!("expected ReadView");
+            panic!("expected Read detail pane");
         };
         assert_eq!(clipboard_status.as_deref(), Some("Key copied!"));
     });
@@ -744,35 +916,16 @@ fn show_credential_copy_key_and_value_set_clipboard_status(cx: &mut TestAppConte
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::ReadView {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::Read {
             clipboard_status, ..
-        } = &view.screen
+        } = detail
         else {
-            panic!("expected ReadView");
+            panic!("expected Read detail pane");
         };
         assert_eq!(clipboard_status.as_deref(), Some("Value copied!"));
-    });
-}
-
-#[gpui::test]
-fn back_to_list_from_read_view_preserves_selection(cx: &mut TestAppContext) {
-    let (window, view) = open_unlocked_window(cx, seed_vault(3));
-
-    window
-        .update(cx, |_, window, cx| {
-            view.update(cx, |view, cx| {
-                view.select_next(&SelectNext, window, cx); // select row index 1 ("key2")
-                view.open_read_view(&ShowCredential, window, cx);
-                view.back_to_list_from_read_view(&BackToListFromReadView, window, cx);
-            });
-        })
-        .unwrap();
-
-    view.update(cx, |view, _| {
-        let AppScreen::CredentialList { selected, .. } = &view.screen else {
-            panic!("expected to return to CredentialList");
-        };
-        assert_eq!(*selected, 1, "Esc from Show should return to the same row");
     });
 }
 
@@ -789,14 +942,17 @@ fn env_vars_valid_key_shows_created_entry(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::EnvVars {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::EnvVars {
             env_name,
             value,
             error,
             ..
-        } = &view.screen
+        } = detail
         else {
-            panic!("expected EnvVars");
+            panic!("expected EnvVars detail pane");
         };
         assert_eq!(env_name, "KEY1");
         assert_eq!(value, "value1");
@@ -806,17 +962,20 @@ fn env_vars_valid_key_shows_created_entry(cx: &mut TestAppContext) {
     window
         .update(cx, |_, window, cx| {
             view.update(cx, |view, cx| {
-                view.copy_env_line(&lootbox_gui::app::CopyEnvLine, window, cx);
+                view.copy_env_line(&CopyEnvLine, window, cx);
             });
         })
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::EnvVars {
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::EnvVars {
             clipboard_status, ..
-        } = &view.screen
+        } = detail
         else {
-            panic!("expected EnvVars");
+            panic!("expected EnvVars detail pane");
         };
         assert_eq!(clipboard_status.as_deref(), Some("Copied to clipboard!"));
     });
@@ -840,8 +999,11 @@ fn env_vars_invalid_key_shows_invalid_reason(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::EnvVars { error, .. } = &view.screen else {
-            panic!("expected EnvVars");
+        let AppScreen::Unlocked { detail, .. } = &view.screen else {
+            panic!("expected Unlocked");
+        };
+        let DetailPane::EnvVars { error, .. } = detail else {
+            panic!("expected EnvVars detail pane");
         };
         assert!(
             error
@@ -853,7 +1015,7 @@ fn env_vars_invalid_key_shows_invalid_reason(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn back_to_list_from_env_vars_preserves_selection(cx: &mut TestAppContext) {
+fn back_to_read_from_env_vars_preserves_selection(cx: &mut TestAppContext) {
     let (window, view) = open_unlocked_window(cx, seed_vault(2));
 
     window
@@ -861,17 +1023,21 @@ fn back_to_list_from_env_vars_preserves_selection(cx: &mut TestAppContext) {
             view.update(cx, |view, cx| {
                 view.select_next(&SelectNext, window, cx); // select row index 1 ("key2")
                 view.open_env_vars(&ExportEnv, window, cx);
-                view.toggle_env_visibility(&ToggleEnvVisibility, window, cx);
-                view.back_to_list_from_env_vars(&BackToListFromEnvVars, window, cx);
+                view.toggle_value_visibility(&ToggleValueVisibility, window, cx);
+                view.back_to_list_from_env_vars(window, cx);
             });
         })
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { selected, .. } = &view.screen else {
-            panic!("expected to return to CredentialList");
+        let AppScreen::Unlocked {
+            selected, detail, ..
+        } = &view.screen
+        else {
+            panic!("expected Unlocked");
         };
-        assert_eq!(*selected, 1, "Esc from EnvVars should return to the same row");
+        assert_eq!(*selected, Some(1), "back should return to the same row");
+        assert!(matches!(detail, DetailPane::Read { .. }));
     });
 }
 
@@ -931,7 +1097,7 @@ fn export_csv_writes_file_and_status_message_matches(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, _| {
-        assert!(matches!(view.screen, AppScreen::CredentialList { .. }));
+        assert!(matches!(view.screen, AppScreen::Unlocked { .. }));
     });
 }
 
@@ -984,8 +1150,8 @@ fn import_csv_appends_credentials_and_reports_correct_count(cx: &mut TestAppCont
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to return to CredentialList");
+        let AppScreen::Unlocked { credentials, .. } = &view.screen else {
+            panic!("expected to return to Unlocked");
         };
         assert_eq!(credentials.len(), 3, "1 seeded + 2 imported");
     });
@@ -1005,8 +1171,8 @@ fn csv_form_cancel_returns_to_list_unchanged(cx: &mut TestAppContext) {
         .unwrap();
 
     view.update(cx, |view, _| {
-        let AppScreen::CredentialList { credentials, .. } = &view.screen else {
-            panic!("expected to return to CredentialList");
+        let AppScreen::Unlocked { credentials, .. } = &view.screen else {
+            panic!("expected to return to Unlocked");
         };
         assert_eq!(credentials.len(), 1, "cancel must not change anything");
     });
@@ -1025,11 +1191,7 @@ fn export_csv_invalid_path_sets_error(cx: &mut TestAppContext) {
                 };
                 // A directory that doesn't exist, with a nonexistent parent -- write must fail.
                 path_input.update(cx, |state, cx| {
-                    state.set_value(
-                        "/this/path/does/not/exist/export.csv",
-                        window,
-                        cx,
-                    )
+                    state.set_value("/this/path/does/not/exist/export.csv", window, cx)
                 });
                 view.submit_csv_form(
                     &gpui_component::input::Enter { secondary: false },
