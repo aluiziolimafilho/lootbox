@@ -4,6 +4,7 @@ use gpui::{
 };
 use gpui_component::alert::Alert;
 use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
 use gpui_component::input::{Input, InputState};
 
 use crate::app::{AppView, CsvMode};
@@ -21,9 +22,9 @@ pub fn render(
         CsvMode::Import => "Import CSV",
     };
     let submit_label = if status.is_some() {
-        "Back to list (Enter)"
+        "Back to list"
     } else {
-        "Submit (Enter)"
+        "Submit"
     };
 
     div()
@@ -34,14 +35,9 @@ pub fn render(
         .items_center()
         .justify_center()
         .gap_3()
-        .child(title)
         .child(
-            div()
-                .w(gpui::px(420.0))
-                .flex()
-                .flex_col()
-                .gap_3()
-                .child(
+            div().w(gpui::px(420.0)).child(
+                GroupBox::new().title(title).outline().child(
                     div()
                         .flex()
                         .flex_col()
@@ -49,8 +45,16 @@ pub fn render(
                         .on_action(cx.listener(AppView::submit_csv_form))
                         .child("CSV file path")
                         .child(Input::new(&path_input)),
-                )
-                .children(status.map(|message| div().child(message)))
+                ),
+            ),
+        )
+        .child(
+            div()
+                .w(gpui::px(420.0))
+                .flex()
+                .flex_col()
+                .gap_3()
+                .children(status.map(|message| Alert::success("csv-form-status", message).banner()))
                 .children(error.map(|message| Alert::error("csv-form-error", message).banner()))
                 .child(
                     div()
@@ -71,7 +75,7 @@ pub fn render(
                         .child(
                             Button::new("cancel-csv-form")
                                 .outline()
-                                .label("Cancel (Esc)")
+                                .label("Cancel")
                                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                                     view.cancel_csv_form(
                                         &gpui_component::input::Escape,

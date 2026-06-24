@@ -153,6 +153,7 @@ fn render_read(
                 .child(
                     Button::new("update")
                         .outline()
+                        .icon(gpui_component::IconName::Settings)
                         .label("Update")
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                             view.open_update_form(&UpdateCredential, window, cx)
@@ -161,6 +162,7 @@ fn render_read(
                 .child(
                     Button::new("remove")
                         .danger()
+                        .icon(gpui_component::IconName::Delete)
                         .label("Remove")
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                             view.open_remove_confirm(&RemoveCredential, window, cx)
@@ -169,6 +171,7 @@ fn render_read(
                 .child(
                     Button::new("env")
                         .info()
+                        .icon(gpui_component::IconName::ExternalLink)
                         .label("Export as env var")
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                             view.open_env_vars(&ExportEnv, window, cx)

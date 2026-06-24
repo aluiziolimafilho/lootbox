@@ -5,6 +5,7 @@ use gpui::{
     Window, div,
 };
 use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
 
 use crate::app::{AppView, CancelNewFile, ConfirmNewFile};
 
@@ -27,27 +28,53 @@ pub fn render(
         .items_center()
         .justify_center()
         .gap_4()
-        .child(format!("No vault found at {}", file_path.display()))
-        .child("Create a new encrypted vault here?")
         .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(
-                    Button::new("confirm-new-file")
-                        .primary()
-                        .label("Create Vault (Y)")
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.confirm_new_file(&ConfirmNewFile, window, cx)
-                        })),
-                )
-                .child(
-                    Button::new("cancel-new-file")
-                        .outline()
-                        .label("Cancel (Esc)")
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.cancel_new_file(&CancelNewFile, window, cx)
-                        })),
-                ),
+            div().w(gpui::px(380.0)).child(
+                GroupBox::new()
+                    .title("No vault found")
+                    .outline()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .child(format!("{}", file_path.display()))
+                            .child("Create a new encrypted vault here?")
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("confirm-new-file")
+                                            .primary()
+                                            .icon(gpui_component::IconName::Plus)
+                                            .label("Create Vault")
+                                            .on_click(cx.listener(
+                                                |view, _: &ClickEvent, window, cx| {
+                                                    view.confirm_new_file(
+                                                        &ConfirmNewFile,
+                                                        window,
+                                                        cx,
+                                                    )
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("cancel-new-file")
+                                            .outline()
+                                            .label("Cancel")
+                                            .on_click(cx.listener(
+                                                |view, _: &ClickEvent, window, cx| {
+                                                    view.cancel_new_file(
+                                                        &CancelNewFile,
+                                                        window,
+                                                        cx,
+                                                    )
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    ),
+            ),
         )
 }

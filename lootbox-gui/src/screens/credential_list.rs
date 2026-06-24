@@ -53,6 +53,7 @@ pub fn render(
                             Button::new("export-csv")
                                 .outline()
                                 .small()
+                                .icon(gpui_component::IconName::File)
                                 .label("Export CSV")
                                 .on_click(cx.listener(|view, _, window, cx| {
                                     view.open_export_csv(&ExportCsv, window, cx)
@@ -62,6 +63,7 @@ pub fn render(
                             Button::new("import-csv")
                                 .outline()
                                 .small()
+                                .icon(gpui_component::IconName::FolderOpen)
                                 .label("Import CSV")
                                 .on_click(cx.listener(|view, _, window, cx| {
                                     view.open_import_csv(&ImportCsv, window, cx)
@@ -96,6 +98,7 @@ pub fn render(
                 Button::new("quit")
                     .outline()
                     .small()
+                    .icon(gpui_component::IconName::Close)
                     .label("Quit")
                     .on_click(cx.listener(|view, _, window, cx| view.quit_app(&QuitApp, window, cx))),
             ),
