@@ -12,7 +12,7 @@ use lootbox::Credential;
 
 use crate::app::{
     AppView, CancelRemove, ConfirmRemove, CopyEnvLine, CopyKey, CopyUrl, CopyValue, DetailPane,
-    EditMode, ExportEnv, RemoveCredential, UpdateCredential,
+    EditMode, ExportEnv, RemoveCredential, ToggleValueVisibility, UpdateCredential,
 };
 use crate::{clipboard, mask};
 
@@ -169,7 +169,21 @@ fn render_read(
         copy_bar = copy_bar.child(url_clipboard).child("Copy URL");
     }
 
-    copy_bar = copy_bar.child("(Tab to reveal/hide value)");
+    let toggle_icon = if value_visible {
+        gpui_component::IconName::EyeOff
+    } else {
+        gpui_component::IconName::Eye
+    };
+    let toggle_label = if value_visible { "Hide value" } else { "Show value" };
+    copy_bar = copy_bar.child(
+        Button::new("toggle-value-visibility")
+            .ghost()
+            .icon(toggle_icon)
+            .label(toggle_label)
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.toggle_value_visibility(&ToggleValueVisibility, window, cx)
+            })),
+    );
 
     div()
         .flex()
