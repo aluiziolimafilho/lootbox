@@ -124,7 +124,7 @@ fn field_row(label: &str, value: impl Into<gpui::SharedString>) -> gpui::Div {
                 .text_color(gpui::rgb(0x6b7280))
                 .child(label.to_string()),
         )
-        .child(div().flex_1().truncate().child(value.into()))
+        .child(div().flex_1().min_w_0().child(value.into()))
 }
 
 fn render_read(
@@ -183,7 +183,7 @@ fn render_read(
         .flex()
         .flex_col()
         .gap_3()
-        .child(div().text_xl().font_bold().truncate().child(format!("#{id}  {}", credential.display_name())))
+        .child(div().text_xl().font_bold().child(format!("#{id}  {}", credential.display_name())))
         .child(key_row)
         .child(value_row);
 
