@@ -26,6 +26,7 @@ pub fn render(
 ) -> impl IntoElement {
     div().flex_1().h_full().p_4().child(match detail {
         DetailPane::Empty => render_empty().into_any_element(),
+        DetailPane::About => render_about().into_any_element(),
         DetailPane::Read {
             id,
             credential,
@@ -87,6 +88,20 @@ fn render_empty() -> impl IntoElement {
         .items_center()
         .justify_center()
         .child("Select a credential to view it here.")
+}
+
+fn render_about() -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .child(div().text_xl().child("LootBox"))
+        .child(
+            DescriptionList::new()
+                .bordered(true)
+                .item("Version", lootbox::VERSION, 1)
+                .item("Build", lootbox::GIT_HASH, 1),
+        )
 }
 
 fn render_read(

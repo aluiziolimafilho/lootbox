@@ -25,7 +25,8 @@ actions!(
         RemoveCredential,
         ExportEnv,
         ExportCsv,
-        ImportCsv
+        ImportCsv,
+        OpenAbout
     ]
 );
 actions!(remove_confirm, [ConfirmRemove, CancelRemove]);
@@ -60,6 +61,7 @@ pub enum AppScreen {
 
 pub enum DetailPane {
     Empty,
+    About,
     Read {
         id: usize,
         credential: Credential,
@@ -261,6 +263,13 @@ impl AppView {
 
     pub fn quit_app(&mut self, _: &QuitApp, _window: &mut Window, cx: &mut Context<Self>) {
         cx.quit();
+    }
+
+    pub fn open_about(&mut self, _: &OpenAbout, _window: &mut Window, cx: &mut Context<Self>) {
+        if let AppScreen::Unlocked { detail, .. } = &mut self.screen {
+            *detail = DetailPane::About;
+        }
+        cx.notify();
     }
 
     /// Handles the `Escape` keystroke while a Password-screen `Input` is focused. `InputState`
@@ -1077,6 +1086,7 @@ impl Render for AppView {
                 .on_action(cx.listener(AppView::copy_read_view_value))
                 .on_action(cx.listener(AppView::copy_env_line))
                 .on_action(cx.listener(AppView::confirm_remove))
+                .on_action(cx.listener(AppView::open_about))
                 .flex()
                 .flex_row()
                 .size_full()

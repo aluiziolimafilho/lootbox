@@ -8,7 +8,7 @@ use gpui_component::list::ListItem;
 use gpui_component::Sizable as _;
 use lootbox::Credential;
 
-use crate::app::{AddCredential, AppView, ExportCsv, ImportCsv, QuitApp};
+use crate::app::{AddCredential, AppView, ExportCsv, ImportCsv, OpenAbout, QuitApp};
 use crate::mask;
 
 pub const CONTEXT: &str = "credential_list";
@@ -94,13 +94,24 @@ pub fn render(
             this.child(div().p_2().child("No credentials yet."))
         })
         .child(
-            div().p_2().border_t_1().child(
-                Button::new("quit")
-                    .outline()
-                    .small()
-                    .icon(gpui_component::IconName::Close)
-                    .label("Quit")
-                    .on_click(cx.listener(|view, _, window, cx| view.quit_app(&QuitApp, window, cx))),
-            ),
+            div().p_2().border_t_1().flex().gap_1()
+                .child(
+                    Button::new("about")
+                        .outline()
+                        .small()
+                        .icon(gpui_component::IconName::Info)
+                        .label("About")
+                        .on_click(cx.listener(|view, _, window, cx| {
+                            view.open_about(&OpenAbout, window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("quit")
+                        .outline()
+                        .small()
+                        .icon(gpui_component::IconName::Close)
+                        .label("Quit")
+                        .on_click(cx.listener(|view, _, window, cx| view.quit_app(&QuitApp, window, cx))),
+                ),
         )
 }

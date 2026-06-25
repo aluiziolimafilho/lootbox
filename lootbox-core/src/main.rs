@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "lootbox")]
 #[command(about = "A secure credential storage tool with AES-256 encryption", long_about = None)]
+#[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")"))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
