@@ -80,12 +80,6 @@ fn main() {
     });
 }
 
-fn parse_file_path_arg() -> PathBuf {
-    match std::env::args().nth(1) {
-        Some(path) => PathBuf::from(path),
-        None => {
-            eprintln!("Usage: lootbox-gui <vault-file>");
-            std::process::exit(1);
-        }
-    }
+fn parse_file_path_arg() -> Option<PathBuf> {
+    std::env::args().nth(1).map(PathBuf::from)
 }

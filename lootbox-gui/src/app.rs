@@ -1,8 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gpui::{
-    AppContext as _, ClipboardItem, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, Window, actions, div,
+    AppContext as _, ClickEvent, ClipboardItem, Context, Entity, FocusHandle,
+    InteractiveElement, IntoElement, ParentElement, PathPromptOptions, Render, Styled, Window,
+    actions, div,
 };
 use gpui_component::input::InputState;
 use gpui_component::notification::Notification;
@@ -37,6 +38,7 @@ pub enum EditMode {
 }
 
 pub enum AppScreen {
+    FilePicker,
     NewFileConfirm,
     Password {
         input: Entity<InputState>,
@@ -99,20 +101,25 @@ pub enum CsvMode {
 }
 
 pub struct AppView {
-    pub file_path: PathBuf,
+    pub file_path: Option<PathBuf>,
     pub password: String,
     pub screen: AppScreen,
     pub focus_handle: FocusHandle,
 }
 
 impl AppView {
-    pub fn new(file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(file_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let screen = if file_path.exists() {
-            Self::build_password_screen(false, window, cx)
-        } else {
-            focus_handle.focus(window);
-            AppScreen::NewFileConfirm
+        let screen = match &file_path {
+            Some(path) if path.exists() => Self::build_password_screen(false, window, cx),
+            Some(_) => {
+                focus_handle.focus(window);
+                AppScreen::NewFileConfirm
+            }
+            None => {
+                focus_handle.focus(window);
+                AppScreen::FilePicker
+            }
         };
 
         Self {
@@ -121,6 +128,96 @@ impl AppView {
             screen,
             focus_handle,
         }
+    }
+
+    /// By the time any code reaches `Password`, `Unlocked`, or `CsvForm`, a file path has
+    /// always already been chosen -- either via the CLI arg or via `FilePicker`'s two
+    /// transition methods, the only ways to leave `FilePicker`/`NewFileConfirm`.
+    fn file_path(&self) -> &PathBuf {
+        self.file_path
+            .as_ref()
+            .expect("file_path must be set before reaching Password/Unlocked/CsvForm")
+    }
+
+    /// The OS "Open" dialog only lists files that already exist, so no extra confirmation step
+    /// is needed (unlike a CLI-arg path, which might not exist yet and goes through
+    /// `NewFileConfirm`).
+    pub fn open_existing_vault_at(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.file_path = Some(path);
+        self.screen = Self::build_password_screen(false, window, cx);
+        cx.notify();
+    }
+
+    /// Skips `NewFileConfirm` deliberately: the Save dialog itself was the user's explicit
+    /// "create a new vault" action, so a second "Create a new encrypted vault here?"
+    /// confirmation would be redundant.
+    pub fn create_new_vault_at(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.file_path = Some(path);
+        self.screen = Self::build_password_screen(true, window, cx);
+        cx.notify();
+    }
+
+    /// Raises the native OS "Open" file dialog. Any non-selection outcome (user cancelled, the
+    /// dialog channel was dropped, or a platform error) collapses to "stay on `FilePicker`" --
+    /// cancelling a native dialog is not an error state.
+    pub fn open_existing_vault_dialog(
+        &mut self,
+        _: &ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rx = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: None,
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Ok(Some(mut paths))) = rx.await else {
+                return;
+            };
+            let Some(path) = paths.pop() else {
+                return;
+            };
+            cx.update(|window, cx| {
+                this.update(cx, |this, cx| this.open_existing_vault_at(path, window, cx))
+                    .ok();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Raises the native OS "Save As"-style dialog for choosing where to create a new vault.
+    /// `Path::new("")` lets the platform pick its own default starting directory.
+    pub fn create_new_vault_dialog(
+        &mut self,
+        _: &ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rx = cx.prompt_for_new_path(Path::new(""), None);
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Ok(Some(path))) = rx.await else {
+                return;
+            };
+            cx.update(|window, cx| {
+                this.update(cx, |this, cx| this.create_new_vault_at(path, window, cx))
+                    .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn build_password_screen(
@@ -209,7 +306,7 @@ impl AppView {
                 Err(err) => self.set_password_error(err.to_string(), cx),
             }
         } else {
-            match lootbox::list_credentials(&self.file_path, &value) {
+            match lootbox::list_credentials(self.file_path(), &value) {
                 Ok(credentials) => {
                     self.password = value;
                     self.go_to_unlocked(credentials, window, cx);
@@ -267,7 +364,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         let credentials =
-            lootbox::list_credentials(&self.file_path, &self.password).unwrap_or_default();
+            lootbox::list_credentials(self.file_path(), &self.password).unwrap_or_default();
         self.focus_handle.focus(window);
 
         if credentials.is_empty() {
@@ -631,9 +728,9 @@ impl AppView {
         let value = value_input.read(cx).value().to_string();
 
         let result = match update_id {
-            None => lootbox::save_credential(&self.file_path, &self.password, &key, &value),
+            None => lootbox::save_credential(self.file_path(), &self.password, &key, &value),
             Some(id) => lootbox::update_credential(
-                &self.file_path,
+                self.file_path(),
                 &self.password,
                 id,
                 Some(key.as_str()),
@@ -672,7 +769,7 @@ impl AppView {
             return;
         };
         let id = *id;
-        match lootbox::remove_credential(&self.file_path, &self.password, id) {
+        match lootbox::remove_credential(self.file_path(), &self.password, id) {
             Ok(()) => self.refresh_unlocked(Some(id.saturating_sub(1)), window, cx),
             Err(err) => {
                 if let AppScreen::Unlocked { detail, .. } = &mut self.screen
@@ -782,7 +879,7 @@ impl AppView {
         };
         let id = idx + 1;
 
-        let new_detail = match lootbox::generate_env_vars(&self.file_path, &self.password, id) {
+        let new_detail = match lootbox::generate_env_vars(self.file_path(), &self.password, id) {
             Ok(mut result) => {
                 if let Some(entry) = result.created.pop() {
                     DetailPane::EnvVars {
@@ -906,10 +1003,10 @@ impl AppView {
         let csv_path = PathBuf::from(path_input.read(cx).value().trim());
 
         let result = if is_export {
-            lootbox::export_credentials_to_csv(&self.file_path, &self.password, &csv_path)
+            lootbox::export_credentials_to_csv(self.file_path(), &self.password, &csv_path)
                 .map(|()| format!("Exported to {}", csv_path.display()))
         } else {
-            lootbox::import_credentials_from_csv(&self.file_path, &self.password, &csv_path)
+            lootbox::import_credentials_from_csv(self.file_path(), &self.password, &csv_path)
                 .map(|count| format!("Imported {count} credential(s)."))
         };
 
@@ -941,8 +1038,12 @@ impl AppView {
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = match &self.screen {
+            AppScreen::FilePicker => {
+                screens::file_picker::render(self.focus_handle.clone(), window, cx)
+                    .into_any_element()
+            }
             AppScreen::NewFileConfirm => screens::new_file_confirm::render(
-                &self.file_path,
+                self.file_path(),
                 self.focus_handle.clone(),
                 window,
                 cx,

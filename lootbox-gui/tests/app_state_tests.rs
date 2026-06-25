@@ -84,7 +84,29 @@ fn open_test_window(
     let window = cx.update(|cx| {
         gpui_component::init(cx);
         cx.open_window(WindowOptions::default(), move |window, cx| {
-            let view = cx.new(|cx| AppView::new(file_path.clone(), window, cx));
+            let view = cx.new(|cx| AppView::new(Some(file_path.clone()), window, cx));
+            *captured_for_closure.borrow_mut() = Some(view.clone());
+            cx.new(|cx| Root::new(view, window, cx))
+        })
+        .unwrap()
+    });
+
+    let view = captured
+        .borrow_mut()
+        .take()
+        .expect("AppView entity captured during window construction");
+    (window, view)
+}
+
+/// Mirrors `open_test_window`, but for the no-CLI-arg launch path -- `AppView::new(None, ...)`.
+fn open_test_window_no_path(cx: &mut TestAppContext) -> (WindowHandle<Root>, Entity<AppView>) {
+    let captured: Rc<RefCell<Option<Entity<AppView>>>> = Rc::new(RefCell::new(None));
+    let captured_for_closure = captured.clone();
+
+    let window = cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.open_window(WindowOptions::default(), move |window, cx| {
+            let view = cx.new(|cx| AppView::new(None, window, cx));
             *captured_for_closure.borrow_mut() = Some(view.clone());
             cx.new(|cx| Root::new(view, window, cx))
         })
@@ -1208,5 +1230,63 @@ fn export_csv_invalid_path_sets_error(cx: &mut TestAppContext) {
         };
         assert!(error.is_some());
         assert!(status.is_none());
+    });
+}
+
+#[gpui::test]
+fn file_picker_shown_when_no_path_given(cx: &mut TestAppContext) {
+    let (_window, view) = open_test_window_no_path(cx);
+
+    view.update(cx, |view, _| {
+        assert!(matches!(view.screen, AppScreen::FilePicker));
+        assert!(view.file_path.is_none());
+    });
+}
+
+#[gpui::test]
+fn open_existing_vault_at_transitions_to_password_not_new(cx: &mut TestAppContext) {
+    let (window, view) = open_test_window_no_path(cx);
+    let seeded_path = seed_vault(1);
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_existing_vault_at(seeded_path.clone(), window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        assert_eq!(view.file_path, Some(seeded_path));
+        assert!(matches!(
+            view.screen,
+            AppScreen::Password { is_new: false, .. }
+        ));
+    });
+}
+
+#[gpui::test]
+fn create_new_vault_at_transitions_to_password_is_new(cx: &mut TestAppContext) {
+    let (window, view) = open_test_window_no_path(cx);
+    let fresh_path = scratch_vault_path();
+
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.create_new_vault_at(fresh_path.clone(), window, cx);
+            });
+        })
+        .unwrap();
+
+    view.update(cx, |view, _| {
+        assert_eq!(view.file_path, Some(fresh_path));
+        assert!(matches!(
+            view.screen,
+            AppScreen::Password { is_new: true, .. }
+        ));
+        assert!(
+            !matches!(view.screen, AppScreen::NewFileConfirm),
+            "creating via the dialog must skip the extra NewFileConfirm step"
+        );
     });
 }

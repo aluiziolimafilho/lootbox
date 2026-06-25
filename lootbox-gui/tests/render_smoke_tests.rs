@@ -42,7 +42,7 @@ fn open_test_window(
     let window = cx.update(|cx| {
         gpui_component::init(cx);
         cx.open_window(WindowOptions::default(), move |window, cx| {
-            let view = cx.new(|cx| AppView::new(file_path.clone(), window, cx));
+            let view = cx.new(|cx| AppView::new(Some(file_path.clone()), window, cx));
             *captured_for_closure.borrow_mut() = Some(view.clone());
             cx.new(|cx| Root::new(view, window, cx))
         })
@@ -54,6 +54,35 @@ fn open_test_window(
         .take()
         .expect("AppView entity captured during window construction");
     (window, view)
+}
+
+/// Mirrors `open_test_window`, but for the no-CLI-arg launch path -- `AppView::new(None, ...)`.
+fn open_test_window_no_path(cx: &mut TestAppContext) -> (WindowHandle<Root>, Entity<AppView>) {
+    let captured: Rc<RefCell<Option<Entity<AppView>>>> = Rc::new(RefCell::new(None));
+    let captured_for_closure = captured.clone();
+
+    let window = cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.open_window(WindowOptions::default(), move |window, cx| {
+            let view = cx.new(|cx| AppView::new(None, window, cx));
+            *captured_for_closure.borrow_mut() = Some(view.clone());
+            cx.new(|cx| Root::new(view, window, cx))
+        })
+        .unwrap()
+    });
+
+    let view = captured
+        .borrow_mut()
+        .take()
+        .expect("AppView entity captured during window construction");
+    (window, view)
+}
+
+#[gpui::test]
+fn render_file_picker_does_not_panic(cx: &mut TestAppContext) {
+    let (window, view) = open_test_window_no_path(cx);
+
+    render_view(window, &view, cx);
 }
 
 #[gpui::test]
