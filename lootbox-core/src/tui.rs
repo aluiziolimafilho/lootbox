@@ -59,7 +59,7 @@ impl Field {
         match self {
             Field::Name => Field::Key,
             Field::Key => Field::Value,
-            Field::Value => Field::Value,
+            Field::Value => Field::Url,
             Field::Url => Field::Description,
             Field::Description => Field::Description,
         }
@@ -487,7 +487,7 @@ fn handle_add(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
             *error = None;
         }
         KeyCode::Enter => {
-            if *focus != Field::Value && !modifiers.contains(KeyModifiers::SHIFT) {
+            if *focus != Field::Description && !modifiers.contains(KeyModifiers::SHIFT) {
                 *focus = focus.enter_next();
                 return Ok(false);
             }
@@ -561,7 +561,7 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
                 *error = None;
             }
             KeyCode::Enter => {
-                if *focus != Field::Value && !modifiers.contains(KeyModifiers::SHIFT) {
+                if *focus != Field::Description && !modifiers.contains(KeyModifiers::SHIFT) {
                     *focus = focus.enter_next();
                     return Ok(false);
                 }
@@ -1056,7 +1056,9 @@ fn draw_add_form(
     }
 
     let hint = if focus == Field::Value {
-        "  Tab → show/hide value   BackTab/Enter → next field   Esc → cancel"
+        "  Tab → show/hide value   BackTab/Enter → next field   Shift+Enter → save   Esc → cancel"
+    } else if focus == Field::Description {
+        "  Enter → save   Shift+Enter → save   BackTab → prev field   Esc → cancel"
     } else {
         "  Enter → next field   Tab → next field   Shift+Enter → save   Esc → cancel"
     };
@@ -1136,7 +1138,9 @@ fn draw_update_form(
                 lines.push(Line::from(""));
             }
             let hint = if focus == Field::Value {
-                "  Tab → show/hide value   BackTab/Enter → next field   Esc → cancel"
+                "  Tab → show/hide value   BackTab/Enter → next field   Shift+Enter → save   Esc → cancel"
+            } else if focus == Field::Description {
+                "  Enter → save   Shift+Enter → save   BackTab → prev field   Esc → cancel"
             } else {
                 "  Enter → next field   Shift+Enter → save   Esc → cancel"
             };
