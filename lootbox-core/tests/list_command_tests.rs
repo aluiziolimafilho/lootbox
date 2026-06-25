@@ -237,7 +237,8 @@ fn test_list_fails_with_corrupted_file() {
     let error_msg = result.unwrap_err().to_string();
     assert!(error_msg.contains("decrypt")
             || error_msg.contains("invalid")
-            || error_msg.contains("corrupted"));
+            || error_msg.contains("corrupted")
+            || error_msg.contains("unsupported"));
 }
 
 #[test]

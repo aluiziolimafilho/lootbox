@@ -405,7 +405,7 @@ fn test_update_fails_with_corrupted_file() {
     // Then: Should return an error
     assert!(result.is_err());
     let error_msg = result.unwrap_err().to_string();
-    assert!(error_msg.contains("decrypt") || error_msg.contains("invalid") || error_msg.contains("corrupted"));
+    assert!(error_msg.contains("decrypt") || error_msg.contains("invalid") || error_msg.contains("corrupted") || error_msg.contains("unsupported"));
 }
 
 #[test]

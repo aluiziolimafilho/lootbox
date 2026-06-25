@@ -12,12 +12,102 @@ pub struct Credential {
     pub value: String,
 }
 
-/// Binary file format:
+/// Binary file format (v2, new files):
+/// - Magic: 4 bytes ("LBOX")
+/// - Version length: 1 byte
+/// - Version string: N bytes (UTF-8, e.g. "2.0.0")
 /// - Salt: 16 bytes
 /// - Nonce: 12 bytes
 /// - Encrypted data: remaining bytes (contains JSON array of credentials)
+///
+/// Legacy format (v1, files without magic header):
+/// - Salt: 16 bytes
+/// - Nonce: 12 bytes
+/// - Encrypted data: remaining bytes
 const SALT_SIZE: usize = 16;
 const NONCE_SIZE: usize = 12;
+const MAGIC: &[u8; 4] = b"LBOX";
+
+fn parse_semver(v: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = v.splitn(3, '.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+fn parse_file_content(bytes: &[u8]) -> Result<([u8; 16], [u8; 12], &[u8])> {
+    let payload = if bytes.starts_with(MAGIC) {
+        if bytes.len() < 5 {
+            bail!("Invalid encrypted file - file is too small or corrupted");
+        }
+        let version_len = bytes[4] as usize;
+        let payload_start = 5 + version_len;
+        if bytes.len() < payload_start + SALT_SIZE + NONCE_SIZE {
+            bail!("Invalid encrypted file - file is too small or corrupted");
+        }
+        let file_version_str = std::str::from_utf8(&bytes[5..5 + version_len])
+            .context("File header contains invalid version string")?;
+        if let (Some(app), Some(file)) = (
+            parse_semver(env!("CARGO_PKG_VERSION")),
+            parse_semver(file_version_str),
+        ) {
+            if file > app {
+                bail!(
+                    "This file was created with LootBox {}, but the current version is {}. \
+                     Please upgrade LootBox to open this file.",
+                    file_version_str,
+                    env!("CARGO_PKG_VERSION")
+                );
+            }
+        }
+        &bytes[payload_start..]
+    } else {
+        bail!(
+            "This file was not created by LootBox or uses an unsupported format. \
+             Only files created with LootBox 2.0.0 or later can be opened."
+        );
+    };
+    let salt: [u8; 16] = payload[0..SALT_SIZE]
+        .try_into()
+        .context("Failed to read salt from file")?;
+    let nonce: [u8; 12] = payload[SALT_SIZE..SALT_SIZE + NONCE_SIZE]
+        .try_into()
+        .context("Failed to read nonce from file")?;
+    Ok((salt, nonce, &payload[SALT_SIZE + NONCE_SIZE..]))
+}
+
+fn build_file_content(salt: &[u8; 16], nonce: &[u8; 12], encrypted_data: &[u8]) -> Vec<u8> {
+    let version = env!("CARGO_PKG_VERSION").as_bytes();
+    let mut content =
+        Vec::with_capacity(5 + version.len() + SALT_SIZE + NONCE_SIZE + encrypted_data.len());
+    content.extend_from_slice(MAGIC);
+    content.push(version.len() as u8);
+    content.extend_from_slice(version);
+    content.extend_from_slice(salt);
+    content.extend_from_slice(nonce);
+    content.extend_from_slice(encrypted_data);
+    content
+}
+
+fn write_encrypted_file<P: AsRef<Path>>(
+    file_path: P,
+    salt: &[u8; 16],
+    nonce: &[u8; 12],
+    encrypted_data: &[u8],
+) -> Result<()> {
+    let file_path = file_path.as_ref();
+    fs::write(file_path, build_file_content(salt, nonce, encrypted_data))
+        .context("Failed to write encrypted file")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(file_path)?.permissions();
+        permissions.set_mode(0o600);
+        fs::set_permissions(file_path, permissions)?;
+    }
+    Ok(())
+}
 
 /// Saves a credential to an encrypted file
 /// If file exists, validates password and appends the credential
@@ -73,24 +163,7 @@ pub fn save_credential<P: AsRef<Path>>(
     let nonce = generate_nonce();
     let encrypted_data = encrypt(&credentials_json, &key, &nonce)?;
 
-    // Create binary file content: salt (16 bytes) + nonce (12 bytes) + encrypted_data
-    let mut file_content = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + encrypted_data.len());
-    file_content.extend_from_slice(&salt);
-    file_content.extend_from_slice(&nonce);
-    file_content.extend_from_slice(&encrypted_data);
-
-    // Write to file
-    fs::write(file_path, file_content)
-        .context("Failed to write encrypted file")?;
-
-    // Set file permissions (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(file_path)?.permissions();
-        permissions.set_mode(0o600); // rw-------
-        fs::set_permissions(file_path, permissions)?;
-    }
+    write_encrypted_file(file_path, &salt, &nonce, &encrypted_data)?;
 
     Ok(())
 }
@@ -118,21 +191,7 @@ pub fn list_credentials<P: AsRef<Path>>(file_path: P, password: &str) -> Result<
     let file_content = fs::read(file_path)
         .context("Failed to read encrypted file")?;
 
-    // Verify minimum file size
-    if file_content.len() < SALT_SIZE + NONCE_SIZE {
-        bail!("Invalid encrypted file - file is too small or corrupted");
-    }
-
-    // Parse binary format: salt (16 bytes) + nonce (12 bytes) + encrypted_data
-    let salt: [u8; 16] = file_content[0..SALT_SIZE]
-        .try_into()
-        .context("Failed to read salt from file")?;
-
-    let nonce: [u8; 12] = file_content[SALT_SIZE..SALT_SIZE + NONCE_SIZE]
-        .try_into()
-        .context("Failed to read nonce from file")?;
-
-    let encrypted_data = &file_content[SALT_SIZE + NONCE_SIZE..];
+    let (salt, nonce, encrypted_data) = parse_file_content(&file_content)?;
 
     // Derive key from password and salt
     let key = derive_key(password, &salt)?;
@@ -277,24 +336,7 @@ pub fn update_credential<P: AsRef<Path>>(
     let nonce = generate_nonce();
     let encrypted_data = encrypt(&credentials_json, &key, &nonce)?;
 
-    // Create binary file content: salt (16 bytes) + nonce (12 bytes) + encrypted_data
-    let mut file_content = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + encrypted_data.len());
-    file_content.extend_from_slice(&salt);
-    file_content.extend_from_slice(&nonce);
-    file_content.extend_from_slice(&encrypted_data);
-
-    // Write to file
-    fs::write(file_path, file_content)
-        .context("Failed to write encrypted file")?;
-
-    // Set file permissions (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(file_path)?.permissions();
-        permissions.set_mode(0o600); // rw-------
-        fs::set_permissions(file_path, permissions)?;
-    }
+    write_encrypted_file(file_path, &salt, &nonce, &encrypted_data)?;
 
     Ok(())
 }
@@ -352,24 +394,7 @@ pub fn remove_credential<P: AsRef<Path>>(
     let nonce = generate_nonce();
     let encrypted_data = encrypt(&credentials_json, &key, &nonce)?;
 
-    // Create binary file content: salt (16 bytes) + nonce (12 bytes) + encrypted_data
-    let mut file_content = Vec::with_capacity(SALT_SIZE + NONCE_SIZE + encrypted_data.len());
-    file_content.extend_from_slice(&salt);
-    file_content.extend_from_slice(&nonce);
-    file_content.extend_from_slice(&encrypted_data);
-
-    // Write to file
-    fs::write(file_path, file_content)
-        .context("Failed to write encrypted file")?;
-
-    // Set file permissions (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(file_path)?.permissions();
-        permissions.set_mode(0o600); // rw-------
-        fs::set_permissions(file_path, permissions)?;
-    }
+    write_encrypted_file(file_path, &salt, &nonce, &encrypted_data)?;
 
     Ok(())
 }
@@ -798,5 +823,102 @@ mod tests {
         assert_eq!(cred1.value, "first_value");
         assert_eq!(cred2.value, "second_value");
         assert_eq!(cred3.value, "third_value");
+    }
+
+    #[test]
+    fn test_new_file_starts_with_magic_bytes() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("test.enc");
+
+        save_credential(&file_path, "password123", "k", "v").unwrap();
+
+        let raw = fs::read(&file_path).unwrap();
+        assert_eq!(&raw[0..4], b"LBOX", "new files must start with LBOX magic bytes");
+    }
+
+    #[test]
+    fn test_old_format_file_is_rejected() {
+        use crate::crypto::{derive_key, encrypt, generate_nonce, generate_salt};
+
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("old.enc");
+
+        // Write a legacy file (no magic header: just salt + nonce + encrypted JSON)
+        let creds = vec![Credential { key: "legacy".into(), value: "val".into() }];
+        let json = serde_json::to_vec(&creds).unwrap();
+        let salt = generate_salt();
+        let key = derive_key("password123", &salt).unwrap();
+        let nonce = generate_nonce();
+        let encrypted = encrypt(&json, &key, &nonce).unwrap();
+        let mut content = Vec::new();
+        content.extend_from_slice(&salt);
+        content.extend_from_slice(&nonce);
+        content.extend_from_slice(&encrypted);
+        fs::write(&file_path, content).unwrap();
+
+        let result = list_credentials(&file_path, "password123");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unsupported format"));
+    }
+
+    fn write_versioned_file(file_path: &std::path::Path, version: &str, password: &str) {
+        use crate::crypto::{derive_key, encrypt, generate_nonce, generate_salt};
+
+        let creds = vec![Credential { key: "k".into(), value: "v".into() }];
+        let json = serde_json::to_vec(&creds).unwrap();
+        let salt = generate_salt();
+        let key = derive_key(password, &salt).unwrap();
+        let nonce = generate_nonce();
+        let encrypted = encrypt(&json, &key, &nonce).unwrap();
+        let version_bytes = version.as_bytes();
+        let mut content = Vec::new();
+        content.extend_from_slice(b"LBOX");
+        content.push(version_bytes.len() as u8);
+        content.extend_from_slice(version_bytes);
+        content.extend_from_slice(&salt);
+        content.extend_from_slice(&nonce);
+        content.extend_from_slice(&encrypted);
+        fs::write(file_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_parse_semver() {
+        assert_eq!(super::parse_semver("2.0.0"), Some((2, 0, 0)));
+        assert_eq!(super::parse_semver("1.2.3"), Some((1, 2, 3)));
+        assert_eq!(super::parse_semver("10.0.0"), Some((10, 0, 0)));
+        assert!(super::parse_semver("bad").is_none());
+    }
+
+    #[test]
+    fn test_file_from_future_version_is_rejected() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("future.enc");
+        write_versioned_file(&file_path, "99.0.0", "password123");
+
+        let result = list_credentials(&file_path, "password123");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("99.0.0"), "error should mention the file version");
+        assert!(msg.contains("upgrade"), "error should suggest upgrading");
+    }
+
+    #[test]
+    fn test_file_from_same_version_is_accepted() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("same.enc");
+        write_versioned_file(&file_path, env!("CARGO_PKG_VERSION"), "password123");
+
+        let result = list_credentials(&file_path, "password123").unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_file_from_older_version_is_accepted() {
+        let temp_dir = setup_test_dir();
+        let file_path = temp_dir.path().join("older.enc");
+        write_versioned_file(&file_path, "1.0.0", "password123");
+
+        let result = list_credentials(&file_path, "password123").unwrap();
+        assert_eq!(result.len(), 1);
     }
 }

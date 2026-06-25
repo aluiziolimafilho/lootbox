@@ -107,7 +107,7 @@ fn test_save_fails_with_corrupted_existing_file() {
     // Then: Should return an error (cannot validate existing file)
     assert!(result.is_err());
     let error_msg = result.unwrap_err().to_string();
-    assert!(error_msg.contains("decrypt") || error_msg.contains("invalid") || error_msg.contains("corrupted"));
+    assert!(error_msg.contains("decrypt") || error_msg.contains("invalid") || error_msg.contains("corrupted") || error_msg.contains("unsupported"));
 }
 
 #[test]

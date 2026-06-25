@@ -562,6 +562,7 @@ fn test_env_fails_with_corrupted_file() {
         error_msg.contains("decrypt")
             || error_msg.contains("invalid")
             || error_msg.contains("corrupted")
+            || error_msg.contains("unsupported")
     );
 }
 
