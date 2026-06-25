@@ -6,6 +6,7 @@ use gpui_component::alert::Alert;
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::clipboard::Clipboard;
 use gpui_component::description_list::DescriptionList;
+use gpui_component::StyledExt as _;
 use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
 use gpui_component::input::{Input, InputState};
 use lootbox::Credential;
@@ -110,6 +111,22 @@ fn render_about() -> impl IntoElement {
         )
 }
 
+fn field_row(label: &str, value: impl Into<gpui::SharedString>) -> gpui::Div {
+    use gpui::px;
+    div()
+        .flex()
+        .gap_2()
+        .items_start()
+        .child(
+            div()
+                .w(px(110.0))
+                .flex_shrink_0()
+                .text_color(gpui::rgb(0x6b7280))
+                .child(label.to_string()),
+        )
+        .child(div().flex_1().child(value.into()))
+}
+
 fn render_read(
     id: usize,
     credential: Credential,
@@ -125,6 +142,8 @@ fn render_read(
     };
 
     let view = cx.entity();
+
+    // Key row — label + value + copy button
     let key_clipboard = {
         let view = view.clone();
         Clipboard::new("copy-key")
@@ -133,6 +152,10 @@ fn render_read(
                 view.update(cx, |view, cx| view.copy_read_view_key(&CopyKey, window, cx));
             })
     };
+    let key_row = field_row("Key", credential.key.clone())
+        .child(key_clipboard);
+
+    // Value row — label + masked value + eye toggle + copy button
     let value_clipboard = {
         let view = view.clone();
         Clipboard::new("copy-value")
@@ -141,57 +164,46 @@ fn render_read(
                 view.update(cx, |view, cx| view.copy_read_view_value(&CopyValue, window, cx));
             })
     };
-
-    let mut list = DescriptionList::new().bordered(true);
-    if !credential.name.is_empty() {
-        list = list.item("Name", credential.name.clone(), 1);
-    }
-    list = list
-        .item("Key", credential.key.clone(), 1)
-        .item("Value", displayed_value, 1);
-    if let Some(ref url) = credential.url {
-        list = list.item("URL", url.clone(), 1);
-    }
-    if let Some(ref desc) = credential.description {
-        list = list.item("Description", desc.clone(), 1);
-    }
-
-    let mut copy_bar = div().flex().gap_2().child(key_clipboard).child("Copy key")
-        .child(value_clipboard).child("Copy value");
-
-    if let Some(url) = credential.url.clone() {
-        let view = view.clone();
-        let url_clipboard = Clipboard::new("copy-url")
-            .value(url)
-            .on_copied(move |_, window, cx| {
-                view.update(cx, |view, cx| view.copy_url(&CopyUrl, window, cx));
-            });
-        copy_bar = copy_bar.child(url_clipboard).child("Copy URL");
-    }
-
     let toggle_icon = if value_visible {
         gpui_component::IconName::EyeOff
     } else {
         gpui_component::IconName::Eye
     };
-    let toggle_label = if value_visible { "Hide value" } else { "Show value" };
-    copy_bar = copy_bar.child(
-        Button::new("toggle-value-visibility")
-            .ghost()
-            .icon(toggle_icon)
-            .label(toggle_label)
-            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                view.toggle_value_visibility(&ToggleValueVisibility, window, cx)
-            })),
-    );
+    let eye_button = Button::new("toggle-value-visibility")
+        .ghost()
+        .icon(toggle_icon)
+        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+            view.toggle_value_visibility(&ToggleValueVisibility, window, cx)
+        }));
+    let value_row = field_row("Value", displayed_value)
+        .child(eye_button)
+        .child(value_clipboard);
 
-    div()
+    let mut container = div()
         .flex()
         .flex_col()
         .gap_3()
-        .child(format!("Credential #{id}"))
-        .child(list)
-        .child(copy_bar)
+        .child(div().text_xl().font_bold().child(format!("#{id}  {}", credential.display_name())))
+        .child(key_row)
+        .child(value_row);
+
+    // URL row — only if present
+    if let Some(url) = credential.url.clone() {
+        let view = view.clone();
+        let url_clipboard = Clipboard::new("copy-url")
+            .value(url.clone())
+            .on_copied(move |_, window, cx| {
+                view.update(cx, |view, cx| view.copy_url(&CopyUrl, window, cx));
+            });
+        container = container.child(field_row("URL", url).child(url_clipboard));
+    }
+
+    // Description row — only if present, no copy button
+    if let Some(desc) = credential.description.clone() {
+        container = container.child(field_row("Description", desc));
+    }
+
+    container
         .children(clipboard_status.map(|status| div().child(status)))
         .child(
             div()
