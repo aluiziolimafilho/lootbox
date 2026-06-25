@@ -6,6 +6,7 @@ Secure, encrypted credential storage for the terminal. Each file holds one or mo
 
 - **AES-256-GCM encryption** with Argon2 password-based key derivation
 - **Interactive terminal UI** (ratatui) — arrow-key navigation, masked values, toggle reveal with Tab
+- **Native desktop GUI** (GPUI) — mouse-first split-pane list + detail view; launch with no path to pick or create a vault via native file dialogs
 - **CLI subcommands** for scripting: `save`, `list`, `read`, `update`, `remove`, `env`
 - **Shell export** — `env` exports one credential by ID as a shell `export` statement and copies it to the clipboard
 - **MCP server mode** — exposes all commands as tools for Claude Code and other AI agents
@@ -64,27 +65,40 @@ Secret values are masked as `●●●●●●` by default. Press **Tab** while
 
 ### GUI — desktop app
 
-Pass a file path to the `lootbox-gui` binary to open the native desktop UI (see [GUI crate](#gui-crate) below for how to build/run it):
+Launch the `lootbox-gui` binary with or without a file path (see [GUI crate](#gui-crate) below for how to build/run it):
 
 ```bash
-cargo run -p lootbox-gui -- credentials.enc
+cargo run -p lootbox-gui                     # opens an "Open Existing Vault / Create New Vault" picker
+cargo run -p lootbox-gui -- credentials.enc   # opens directly into this vault
 ```
 
-Enter your file password to unlock, then on the credential list:
+With no path, the window opens on a picker screen with **Open Existing Vault…** and **Create New Vault…** buttons, each raising a native OS file dialog.
+
+The main view is a mouse-first, split-pane layout — not a sequence of full-screen takeovers:
+
+- **Left** — a scrollable credential list with an **Add Credential** / **Export CSV** / **Import CSV** / **Quit** toolbar above it. Clicking a row selects it and loads it into the right-hand panel.
+- **Right** — the detail panel for whatever's selected: key/value display with **Update** / **Remove** / **Export as env var** buttons; Add/Update opens a form with **Save**/**Cancel**; Remove shows a confirm step with **Remove**/**Cancel**; exporting as an env var shows a **Back** button.
+
+Masked fields (the Password screen, the Value field while typing, and any read-only masked value) use a press-and-hold eye icon — hold the mouse button down to reveal, release to re-mask.
+
+Keyboard shortcuts still work as accelerators for everything above:
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Navigate the credential list |
+| `↑` / `↓` | Select the previous/next credential |
 | `A` | Add a new credential |
 | `U` | Update the selected credential |
 | `R` | Remove the selected credential |
-| `S` | Show the selected credential (Tab reveals value, K copies key, V copies value) |
-| `E` | Export the selected credential as a shell `export` statement (Tab reveals value, C re-copies) |
+| `E` | Export the selected credential as a shell `export` statement |
 | `X` | Export all credentials to a CSV file (prompts for output path) |
 | `I` | Import credentials from a CSV file (prompts for input path) |
-| `Q` / `Esc` | Quit |
+| `Tab` | Reveal/hide the currently displayed value |
+| `K` / `V` / `C` | Copy key / copy value / copy the env-export line |
+| `Enter` | Confirm a remove, or submit the focused form |
+| `Esc` | Deselect the current credential, or cancel a form/confirm step |
+| `Q` | Quit |
 
-Every action is also reachable by mouse via the buttons below the list. Secret values are masked as `**********` in read-only views (list rows, Show, Env) regardless of actual length; the Add/Update form's Value field uses standard per-character password masking while typing.
+Secret values are masked as `**********` in read-only views regardless of actual length; the Add/Update form's Value field uses standard per-character password masking while typing.
 
 ---
 
