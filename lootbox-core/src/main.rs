@@ -94,25 +94,40 @@ fn main() {
     }
 }
 
+fn prompt_line(prompt: &str) -> anyhow::Result<String> {
+    print!("{prompt}");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_string())
+}
+
+fn prompt_optional(prompt: &str) -> anyhow::Result<Option<String>> {
+    let s = prompt_line(prompt)?;
+    Ok(if s.is_empty() { None } else { Some(s) })
+}
+
 fn handle_save(filename: PathBuf) -> anyhow::Result<()> {
     println!("Saving credential to: {}", filename.display());
     println!();
 
-    // Request password (hidden input)
     let password = rpassword::prompt_password("Enter file password: ")?;
 
-    // Request secret_key
-    print!("Enter secret key: ");
-    io::stdout().flush()?;
-    let mut secret_key = String::new();
-    io::stdin().read_line(&mut secret_key)?;
-    let secret_key = secret_key.trim();
-
-    // Request secret_value (hidden input)
+    let name = prompt_line("Enter name (required): ")?;
+    let secret_key = prompt_line("Enter secret key: ")?;
     let secret_value = rpassword::prompt_password("Enter secret value: ")?;
+    let url = prompt_optional("Enter URL (optional, press Enter to skip): ")?;
+    let description = prompt_optional("Enter description (optional, press Enter to skip): ")?;
 
-    // Save credential
-    save_credential(&filename, &password, secret_key, &secret_value)?;
+    save_credential(
+        &filename,
+        &password,
+        &secret_key,
+        &secret_value,
+        Some(&name),
+        description.as_deref(),
+        url.as_deref(),
+    )?;
 
     println!();
     println!("Credential saved successfully!");
@@ -124,10 +139,7 @@ fn handle_list(filename: PathBuf) -> anyhow::Result<()> {
     println!("Reading credential from: {}", filename.display());
     println!();
 
-    // Request password (hidden input)
     let password = rpassword::prompt_password("Enter file password: ")?;
-
-    // Get and display credential
     let display = get_list_display(&filename, &password)?;
 
     println!();
@@ -140,27 +152,26 @@ fn handle_read(filename: PathBuf) -> anyhow::Result<()> {
     println!("Reading credential from: {}", filename.display());
     println!();
 
-    // Request password (hidden input)
     let password = rpassword::prompt_password("Enter file password: ")?;
+    let id_str = prompt_line("Enter credential ID: ")?;
 
-    // Request credential ID
-    print!("Enter credential ID: ");
-    io::stdout().flush()?;
-    let mut id_input = String::new();
-    io::stdin().read_line(&mut id_input)?;
-    let id_str = id_input.trim();
-
-    // Parse ID as usize
     let credential_id: usize = id_str.parse()
         .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
 
-    // Read credential
     let credential = read_credential(&filename, &password, credential_id)?;
 
-    // Display credential with ID, key, and value in plain text
     println!();
-    println!("[{}] Key: {}", credential_id, credential.key);
-    println!("Value: {}", credential.value);
+    if !credential.name.is_empty() {
+        println!("[{}] Name: {}", credential_id, credential.name);
+    }
+    println!("    Key: {}", credential.key);
+    println!("    Value: {}", credential.value);
+    if let Some(ref url) = credential.url {
+        println!("    URL: {}", url);
+    }
+    if let Some(ref description) = credential.description {
+        println!("    Description: {}", description);
+    }
 
     Ok(())
 }
@@ -169,52 +180,52 @@ fn handle_update(filename: PathBuf) -> anyhow::Result<()> {
     println!("Updating credential in: {}", filename.display());
     println!();
 
-    // Request password (hidden input)
     let password = rpassword::prompt_password("Enter file password: ")?;
+    let id_str = prompt_line("Enter credential ID: ")?;
 
-    // Request credential ID
-    print!("Enter credential ID: ");
-    io::stdout().flush()?;
-    let mut id_input = String::new();
-    io::stdin().read_line(&mut id_input)?;
-    let id_str = id_input.trim();
-
-    // Parse ID as usize
     let credential_id: usize = id_str.parse()
         .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
 
-    // Read current credential to display
     let current = read_credential(&filename, &password, credential_id)?;
 
-    // Display current credential with masked value
     println!();
     println!("Current credential:");
-    println!("[{}] Key: {}", credential_id, current.key);
-    println!("Value: **********");
+    if !current.name.is_empty() {
+        println!("[{}] Name: {}", credential_id, current.name);
+    }
+    println!("    Key: {}", current.key);
+    println!("    Value: **********");
+    if let Some(ref url) = current.url {
+        println!("    URL: {}", url);
+    }
+    if let Some(ref description) = current.description {
+        println!("    Description: {}", description);
+    }
     println!();
 
-    // Request new key (empty means keep current)
-    print!("Enter new secret key (press Enter to keep current): ");
-    io::stdout().flush()?;
-    let mut new_key_input = String::new();
-    io::stdin().read_line(&mut new_key_input)?;
-    let new_key_trimmed = new_key_input.trim();
-    let new_key = if new_key_trimmed.is_empty() {
-        None
-    } else {
-        Some(new_key_trimmed)
-    };
+    let new_name = prompt_optional("Enter new name (press Enter to keep current): ")?;
+    let new_key_input = prompt_line("Enter new secret key (press Enter to keep current): ")?;
+    let new_key = if new_key_input.is_empty() { None } else { Some(new_key_input.as_str()) };
 
-    // Request new value (hidden, empty means keep current)
     let new_value_input = rpassword::prompt_password("Enter new secret value (press Enter to keep current): ")?;
-    let new_value = if new_value_input.is_empty() {
-        None
-    } else {
-        Some(new_value_input.as_str())
-    };
+    let new_value = if new_value_input.is_empty() { None } else { Some(new_value_input.as_str()) };
 
-    // Update credential
-    update_credential(&filename, &password, credential_id, new_key, new_value)?;
+    let new_url = prompt_optional("Enter new URL (press Enter to keep current, '-' to clear): ")?;
+    let new_url = new_url.as_deref().map(|s| if s == "-" { "" } else { s });
+
+    let new_description = prompt_optional("Enter new description (press Enter to keep current, '-' to clear): ")?;
+    let new_description = new_description.as_deref().map(|s| if s == "-" { "" } else { s });
+
+    update_credential(
+        &filename,
+        &password,
+        credential_id,
+        new_key,
+        new_value,
+        new_name.as_deref(),
+        new_description,
+        new_url,
+    )?;
 
     println!();
     println!("Credential updated successfully!");
@@ -226,21 +237,12 @@ fn handle_remove(filename: PathBuf) -> anyhow::Result<()> {
     println!("Removing credential from: {}", filename.display());
     println!();
 
-    // Request password (hidden input)
     let password = rpassword::prompt_password("Enter file password: ")?;
+    let id_str = prompt_line("Enter credential ID: ")?;
 
-    // Request credential ID
-    print!("Enter credential ID: ");
-    io::stdout().flush()?;
-    let mut id_input = String::new();
-    io::stdin().read_line(&mut id_input)?;
-    let id_str = id_input.trim();
-
-    // Parse ID as usize
     let credential_id: usize = id_str.parse()
         .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
 
-    // Remove credential
     remove_credential(&filename, &password, credential_id)?;
 
     println!();
@@ -251,13 +253,9 @@ fn handle_remove(filename: PathBuf) -> anyhow::Result<()> {
 
 fn handle_env(filename: PathBuf) -> anyhow::Result<()> {
     let password = rpassword::prompt_password("# Enter file password: ")?;
+    let id_str = prompt_line("Enter credential ID: ")?;
 
-    print!("Enter credential ID: ");
-    io::stdout().flush()?;
-    let mut id_input = String::new();
-    io::stdin().read_line(&mut id_input)?;
-    let credential_id: usize = id_input
-        .trim()
+    let credential_id: usize = id_str
         .parse()
         .map_err(|_| anyhow::anyhow!("Invalid credential ID: must be a number"))?;
 
@@ -314,7 +312,6 @@ fn handle_import_csv(filename: PathBuf, csv_file: PathBuf) -> anyhow::Result<()>
 /// Wraps a value in single quotes and escapes any single quotes within it,
 /// producing a POSIX-safe shell string for use in `export KEY='value'`.
 fn shell_escape(value: &str) -> String {
-    // Replace every ' with '\'' (end quote, literal quote, reopen quote)
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 

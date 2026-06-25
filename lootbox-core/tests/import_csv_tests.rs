@@ -79,7 +79,7 @@ fn test_import_appends_credentials_to_existing_file() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "import.csv");
 
-    save_credential(&enc_file, "password123", "existing_key", "existing_val").unwrap();
+    save_credential(&enc_file, "password123", "existing_key", "existing_val", None, None, None).unwrap();
 
     fs::write(&csv_file, "key,value\nimported_key,imported_val\n").unwrap();
     import_credentials_from_csv(&enc_file, "password123", &csv_file).unwrap();
@@ -97,7 +97,7 @@ fn test_import_empty_csv_only_header() {
     let csv_file = get_test_file_path(&temp_dir, "import.csv");
 
     fs::write(&csv_file, "key,value\n").unwrap();
-    save_credential(&enc_file, "password123", "preexisting", "value").unwrap();
+    save_credential(&enc_file, "password123", "preexisting", "value", None, None, None).unwrap();
 
     let count = import_credentials_from_csv(&enc_file, "password123", &csv_file).unwrap();
 
@@ -206,7 +206,7 @@ fn test_import_fails_with_wrong_password() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "import.csv");
 
-    save_credential(&enc_file, "correct_password", "existing", "data").unwrap();
+    save_credential(&enc_file, "correct_password", "existing", "data", None, None, None).unwrap();
     fs::write(&csv_file, "key,value\nnew_key,new_val\n").unwrap();
 
     let result = import_credentials_from_csv(&enc_file, "wrong_password!", &csv_file);

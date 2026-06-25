@@ -24,7 +24,7 @@ fn test_export_creates_csv_file() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "api_key", "secret").unwrap();
+    save_credential(&enc_file, "password123", "api_key", "secret", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     assert!(csv_file.exists());
@@ -36,7 +36,7 @@ fn test_export_csv_has_header_row() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "api_key", "secret").unwrap();
+    save_credential(&enc_file, "password123", "api_key", "secret", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -50,7 +50,7 @@ fn test_export_single_credential() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "API_KEY", "sk-12345").unwrap();
+    save_credential(&enc_file, "password123", "API_KEY", "sk-12345", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -63,9 +63,9 @@ fn test_export_multiple_credentials() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "key1", "value1").unwrap();
-    save_credential(&enc_file, "password123", "key2", "value2").unwrap();
-    save_credential(&enc_file, "password123", "key3", "value3").unwrap();
+    save_credential(&enc_file, "password123", "key1", "value1", None, None, None).unwrap();
+    save_credential(&enc_file, "password123", "key2", "value2", None, None, None).unwrap();
+    save_credential(&enc_file, "password123", "key3", "value3", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -80,7 +80,7 @@ fn test_export_empty_vault_has_only_header() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "key", "value").unwrap();
+    save_credential(&enc_file, "password123", "key", "value", None, None, None).unwrap();
     remove_credential(&enc_file, "password123", 1).unwrap();
 
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
@@ -95,7 +95,7 @@ fn test_export_values_in_plain_text() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "db_pass", "super_secret_password").unwrap();
+    save_credential(&enc_file, "password123", "db_pass", "super_secret_password", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -113,7 +113,7 @@ fn test_export_key_with_comma_is_quoted() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "hello,world", "myvalue").unwrap();
+    save_credential(&enc_file, "password123", "hello,world", "myvalue", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -126,7 +126,7 @@ fn test_export_value_with_comma_is_quoted() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "mykey", "val,ue").unwrap();
+    save_credential(&enc_file, "password123", "mykey", "val,ue", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -140,7 +140,7 @@ fn test_export_key_with_double_quote_is_escaped() {
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
     let key_with_quote = "say \"hi\"";
-    save_credential(&enc_file, "password123", key_with_quote, "myvalue").unwrap();
+    save_credential(&enc_file, "password123", key_with_quote, "myvalue", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -155,7 +155,7 @@ fn test_export_value_with_double_quote_is_escaped() {
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
     let value_with_quote = "pass\"word";
-    save_credential(&enc_file, "password123", "mykey", value_with_quote).unwrap();
+    save_credential(&enc_file, "password123", "mykey", value_with_quote, None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -168,7 +168,7 @@ fn test_export_value_with_newline_is_quoted() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "cert", "line1\nline2").unwrap();
+    save_credential(&enc_file, "password123", "cert", "line1\nline2", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -185,10 +185,10 @@ fn test_export_overwrites_existing_csv_file() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "key1", "value1").unwrap();
+    save_credential(&enc_file, "password123", "key1", "value1", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
-    save_credential(&enc_file, "password123", "key2", "value2").unwrap();
+    save_credential(&enc_file, "password123", "key2", "value2", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -204,7 +204,7 @@ fn test_export_does_not_modify_encrypted_file() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "key", "value").unwrap();
+    save_credential(&enc_file, "password123", "key", "value", None, None, None).unwrap();
     let bytes_before = fs::read(&enc_file).unwrap();
 
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
@@ -223,7 +223,7 @@ fn test_export_fails_with_wrong_password() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "correct_pass", "key", "value").unwrap();
+    save_credential(&enc_file, "correct_pass", "key", "value", None, None, None).unwrap();
 
     let result = export_credentials_to_csv(&enc_file, "wrong_passwrd", &csv_file);
     assert!(result.is_err());
@@ -262,9 +262,9 @@ fn test_export_round_trip_with_import() {
     let enc_file2 = get_test_file_path(&temp_dir, "credentials2.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "alpha", "aaa").unwrap();
-    save_credential(&enc_file, "password123", "beta", "bbb").unwrap();
-    save_credential(&enc_file, "password123", "gamma", "ccc").unwrap();
+    save_credential(&enc_file, "password123", "alpha", "aaa", None, None, None).unwrap();
+    save_credential(&enc_file, "password123", "beta", "bbb", None, None, None).unwrap();
+    save_credential(&enc_file, "password123", "gamma", "ccc", None, None, None).unwrap();
 
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
     import_credentials_from_csv(&enc_file2, "password123", &csv_file).unwrap();
@@ -285,9 +285,9 @@ fn test_export_preserves_credential_order() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "first", "1").unwrap();
-    save_credential(&enc_file, "password123", "second", "2").unwrap();
-    save_credential(&enc_file, "password123", "third", "3").unwrap();
+    save_credential(&enc_file, "password123", "first", "1", None, None, None).unwrap();
+    save_credential(&enc_file, "password123", "second", "2", None, None, None).unwrap();
+    save_credential(&enc_file, "password123", "third", "3", None, None, None).unwrap();
 
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
@@ -305,7 +305,7 @@ fn test_export_key_with_unicode() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "clé", "valeur").unwrap();
+    save_credential(&enc_file, "password123", "clé", "valeur", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();
@@ -318,7 +318,7 @@ fn test_export_value_with_special_characters() {
     let enc_file = get_test_file_path(&temp_dir, "credentials.enc");
     let csv_file = get_test_file_path(&temp_dir, "export.csv");
 
-    save_credential(&enc_file, "password123", "token", "a&b<c>d=e!f").unwrap();
+    save_credential(&enc_file, "password123", "token", "a&b<c>d=e!f", None, None, None).unwrap();
     export_credentials_to_csv(&enc_file, "password123", &csv_file).unwrap();
 
     let content = fs::read_to_string(&csv_file).unwrap();

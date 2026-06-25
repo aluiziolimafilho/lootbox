@@ -30,7 +30,7 @@ actions!(
     ]
 );
 actions!(remove_confirm, [ConfirmRemove, CancelRemove]);
-actions!(read_view, [ToggleValueVisibility, CopyKey, CopyValue]);
+actions!(read_view, [ToggleValueVisibility, CopyKey, CopyValue, CopyUrl]);
 actions!(env_vars, [CopyEnvLine]);
 
 pub enum EditMode {
@@ -70,8 +70,11 @@ pub enum DetailPane {
     },
     Form {
         mode: EditMode,
+        name_input: Entity<InputState>,
         key_input: Entity<InputState>,
         value_input: Entity<InputState>,
+        url_input: Entity<InputState>,
+        description_input: Entity<InputState>,
         value_visible: bool,
         error: Option<String>,
     },
@@ -516,31 +519,53 @@ impl AppView {
 
     fn build_form_detail(
         mode: EditMode,
-        key_value: Option<(String, String)>,
+        existing: Option<&Credential>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> DetailPane {
-        let initial_key = key_value.as_ref().map(|(key, _)| key.clone());
-        let initial_value = key_value.as_ref().map(|(_, value)| value.clone());
+        let name_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Name");
+            if let Some(c) = existing {
+                state = state.default_value(c.name.clone());
+            }
+            state
+        });
         let key_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx).placeholder("Key");
-            if let Some(key) = initial_key {
-                state = state.default_value(key);
+            if let Some(c) = existing {
+                state = state.default_value(c.key.clone());
             }
             state
         });
         let value_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx).masked(true).placeholder("Value");
-            if let Some(value) = initial_value {
-                state = state.default_value(value);
+            if let Some(c) = existing {
+                state = state.default_value(c.value.clone());
             }
             state
         });
-        key_input.update(cx, |state, cx| state.focus(window, cx));
+        let url_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("URL (optional)");
+            if let Some(c) = existing {
+                state = state.default_value(c.url.clone().unwrap_or_default());
+            }
+            state
+        });
+        let description_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Description (optional)");
+            if let Some(c) = existing {
+                state = state.default_value(c.description.clone().unwrap_or_default());
+            }
+            state
+        });
+        name_input.update(cx, |state, cx| state.focus(window, cx));
         DetailPane::Form {
             mode,
+            name_input,
             key_input,
             value_input,
+            url_input,
+            description_input,
             value_visible: false,
             error: None,
         }
@@ -566,6 +591,7 @@ impl AppView {
         cx.notify();
     }
 
+
     pub fn open_update_form(
         &mut self,
         _: &UpdateCredential,
@@ -590,8 +616,7 @@ impl AppView {
             return;
         };
         let id = idx + 1;
-        let key_value = (credential.key.clone(), credential.value.clone());
-        let form = Self::build_form_detail(EditMode::Update { id }, Some(key_value), window, cx);
+        let form = Self::build_form_detail(EditMode::Update { id }, Some(credential), window, cx);
         let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
             return;
         };
@@ -636,6 +661,22 @@ impl AppView {
         cx.notify();
     }
 
+    /// `Enter` on the Name field moves focus to the Key field.
+    pub fn advance_from_name_field(
+        &mut self,
+        _: &gpui_component::input::Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        let DetailPane::Form { key_input, .. } = detail else {
+            return;
+        };
+        key_input.update(cx, |state, cx| state.focus(window, cx));
+    }
+
     /// `Enter` on the Key field moves focus to the Value field (mirrors the TUI's `handle_add`).
     pub fn advance_from_key_field(
         &mut self,
@@ -650,6 +691,22 @@ impl AppView {
             return;
         };
         value_input.update(cx, |state, cx| state.focus(window, cx));
+    }
+
+    /// `Enter` on the URL field moves focus to the Description field.
+    pub fn advance_from_url_field(
+        &mut self,
+        _: &gpui_component::input::Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::Unlocked { detail, .. } = &self.screen else {
+            return;
+        };
+        let DetailPane::Form { description_input, .. } = detail else {
+            return;
+        };
+        description_input.update(cx, |state, cx| state.focus(window, cx));
     }
 
     /// `Tab` on the Value field toggles visibility instead of moving focus -- this reproduces
@@ -722,8 +779,11 @@ impl AppView {
         };
         let DetailPane::Form {
             mode,
+            name_input,
             key_input,
             value_input,
+            url_input,
+            description_input,
             ..
         } = detail
         else {
@@ -733,17 +793,35 @@ impl AppView {
             EditMode::Add => None,
             EditMode::Update { id } => Some(*id),
         };
+        let name = name_input.read(cx).value().to_string();
         let key = key_input.read(cx).value().to_string();
         let value = value_input.read(cx).value().to_string();
+        let url = url_input.read(cx).value().to_string();
+        let description = description_input.read(cx).value().to_string();
+
+        fn opt(s: &str) -> Option<&str> {
+            if s.is_empty() { None } else { Some(s) }
+        }
 
         let result = match update_id {
-            None => lootbox::save_credential(self.file_path(), &self.password, &key, &value),
+            None => lootbox::save_credential(
+                self.file_path(),
+                &self.password,
+                &key,
+                &value,
+                opt(&name),
+                opt(&description),
+                opt(&url),
+            ),
             Some(id) => lootbox::update_credential(
                 self.file_path(),
                 &self.password,
                 id,
                 Some(key.as_str()),
                 Some(value.as_str()),
+                Some(name.as_str()),
+                Some(description.as_str()),
+                Some(url.as_str()),
             ),
         };
 
@@ -869,6 +947,34 @@ impl AppView {
         *clipboard_status = Some("Value copied!".to_string());
         window.defer(cx, |window, cx| {
             window.push_notification(Notification::success("Value copied!").autohide(true), cx);
+        });
+        cx.notify();
+    }
+
+    pub fn copy_url(
+        &mut self,
+        _: &CopyUrl,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
+            return;
+        };
+        let DetailPane::Read {
+            credential,
+            clipboard_status,
+            ..
+        } = detail
+        else {
+            return;
+        };
+        let Some(url) = credential.url.clone() else {
+            return;
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(url));
+        *clipboard_status = Some("URL copied!".to_string());
+        window.defer(cx, |window, cx| {
+            window.push_notification(Notification::success("URL copied!").autohide(true), cx);
         });
         cx.notify();
     }
@@ -1084,6 +1190,7 @@ impl Render for AppView {
                 .on_action(cx.listener(AppView::toggle_value_visibility))
                 .on_action(cx.listener(AppView::copy_read_view_key))
                 .on_action(cx.listener(AppView::copy_read_view_value))
+                .on_action(cx.listener(AppView::copy_url))
                 .on_action(cx.listener(AppView::copy_env_line))
                 .on_action(cx.listener(AppView::confirm_remove))
                 .on_action(cx.listener(AppView::open_about))

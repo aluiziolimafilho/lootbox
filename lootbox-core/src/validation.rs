@@ -3,6 +3,9 @@ use anyhow::{bail, Result};
 pub const PASSWORD_MAX_LENGTH: usize = 32;
 pub const SECRET_KEY_MAX_LENGTH: usize = 64;
 pub const SECRET_VALUE_MAX_LENGTH: usize = 5000;
+pub const NAME_MAX_LENGTH: usize = 255;
+pub const DESCRIPTION_MAX_LENGTH: usize = 5000;
+pub const URL_MAX_LENGTH: usize = 3000;
 
 /// Validates password according to requirements:
 /// - At least 8 characters
@@ -67,6 +70,35 @@ pub fn validate_secret_value(value: &str) -> Result<()> {
     Ok(())
 }
 
+/// Validates credential name (required when provided: non-empty, max 255 chars)
+pub fn validate_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        bail!("Name cannot be empty");
+    }
+
+    if name.len() > NAME_MAX_LENGTH {
+        bail!("Name must be at most {NAME_MAX_LENGTH} characters long");
+    }
+
+    Ok(())
+}
+
+/// Validates description (optional: max 5000 chars; empty is accepted)
+pub fn validate_description(desc: &str) -> Result<()> {
+    if desc.len() > DESCRIPTION_MAX_LENGTH {
+        bail!("Description must be at most {DESCRIPTION_MAX_LENGTH} characters long");
+    }
+    Ok(())
+}
+
+/// Validates URL (optional: max 3000 chars; empty is accepted)
+pub fn validate_url(url: &str) -> Result<()> {
+    if url.len() > URL_MAX_LENGTH {
+        bail!("URL must be at most {URL_MAX_LENGTH} characters long");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +157,30 @@ mod tests {
     fn test_secret_value_max_length() {
         assert!(validate_secret_value(&"a".repeat(SECRET_VALUE_MAX_LENGTH)).is_ok());
         assert!(validate_secret_value(&"a".repeat(SECRET_VALUE_MAX_LENGTH + 1)).is_err());
+    }
+
+    #[test]
+    fn test_name_validation() {
+        assert!(validate_name("My API Key").is_ok());
+        assert!(validate_name("x").is_ok());
+        assert!(validate_name("").is_err());
+        assert!(validate_name(&"a".repeat(NAME_MAX_LENGTH)).is_ok());
+        assert!(validate_name(&"a".repeat(NAME_MAX_LENGTH + 1)).is_err());
+    }
+
+    #[test]
+    fn test_description_validation() {
+        assert!(validate_description("").is_ok());
+        assert!(validate_description("some description").is_ok());
+        assert!(validate_description(&"a".repeat(DESCRIPTION_MAX_LENGTH)).is_ok());
+        assert!(validate_description(&"a".repeat(DESCRIPTION_MAX_LENGTH + 1)).is_err());
+    }
+
+    #[test]
+    fn test_url_validation() {
+        assert!(validate_url("").is_ok());
+        assert!(validate_url("https://example.com").is_ok());
+        assert!(validate_url(&"a".repeat(URL_MAX_LENGTH)).is_ok());
+        assert!(validate_url(&"a".repeat(URL_MAX_LENGTH + 1)).is_err());
     }
 }

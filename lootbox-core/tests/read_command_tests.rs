@@ -26,7 +26,7 @@ fn test_read_single_credential_by_id_1() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "api_key", "secret_value_123").unwrap();
+    save_credential(&file_path, password, "api_key", "secret_value_123", None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let result = read_credential(&file_path, password, 1);
@@ -45,9 +45,9 @@ fn test_read_first_credential_from_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first_key", "first_value").unwrap();
-    save_credential(&file_path, password, "second_key", "second_value").unwrap();
-    save_credential(&file_path, password, "third_key", "third_value").unwrap();
+    save_credential(&file_path, password, "first_key", "first_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "second_key", "second_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "third_key", "third_value", None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -64,9 +64,9 @@ fn test_read_middle_credential_from_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first_key", "first_value").unwrap();
-    save_credential(&file_path, password, "second_key", "second_value").unwrap();
-    save_credential(&file_path, password, "third_key", "third_value").unwrap();
+    save_credential(&file_path, password, "first_key", "first_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "second_key", "second_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "third_key", "third_value", None, None, None).unwrap();
 
     // When: Reading credential with ID 2
     let credential = read_credential(&file_path, password, 2).unwrap();
@@ -83,9 +83,9 @@ fn test_read_last_credential_from_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first_key", "first_value").unwrap();
-    save_credential(&file_path, password, "second_key", "second_value").unwrap();
-    save_credential(&file_path, password, "third_key", "third_value").unwrap();
+    save_credential(&file_path, password, "first_key", "first_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "second_key", "second_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "third_key", "third_value", None, None, None).unwrap();
 
     // When: Reading credential with ID 3
     let credential = read_credential(&file_path, password, 3).unwrap();
@@ -103,7 +103,7 @@ fn test_read_returns_actual_value_not_masked() {
     let password = "password123";
     let secret_value = "ThisIsMySecretValue123";
 
-    save_credential(&file_path, password, "api_key", secret_value).unwrap();
+    save_credential(&file_path, password, "api_key", secret_value, None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -122,7 +122,7 @@ fn test_read_credential_with_special_characters() {
     let special_key = "key@#$%^&*()";
     let special_value = "value!@#$%^&*(){}[]|\\:;\"'<>,.?/~`";
 
-    save_credential(&file_path, password, special_key, special_value).unwrap();
+    save_credential(&file_path, password, special_key, special_value, None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -141,7 +141,7 @@ fn test_read_credential_with_unicode_characters() {
     let unicode_key = "密钥🔑";
     let unicode_value = "秘密値🔐";
 
-    save_credential(&file_path, password, unicode_key, unicode_value).unwrap();
+    save_credential(&file_path, password, unicode_key, unicode_value, None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -160,7 +160,7 @@ fn test_read_credential_with_newlines() {
     let key_with_newline = "key\nwith\nnewlines";
     let value_with_newline = "value\nwith\nnewlines";
 
-    save_credential(&file_path, password, key_with_newline, value_with_newline).unwrap();
+    save_credential(&file_path, password, key_with_newline, value_with_newline, None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -179,7 +179,7 @@ fn test_read_credential_with_very_long_values() {
     let long_key = "k".repeat(64);
     let long_value = "v".repeat(5000);
 
-    save_credential(&file_path, password, &long_key, &long_value).unwrap();
+    save_credential(&file_path, password, &long_key, &long_value, None, None, None).unwrap();
 
     // When: Reading credential with ID 1
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -196,9 +196,9 @@ fn test_read_retrieves_exact_saved_data() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "aws_key", "AKIAIOSFODNN7EXAMPLE").unwrap();
-    save_credential(&file_path, password, "github_token", "ghp_1234567890abcdefghijklmnopqrstuv").unwrap();
-    save_credential(&file_path, password, "db_password", "P@ssw0rd!2024").unwrap();
+    save_credential(&file_path, password, "aws_key", "AKIAIOSFODNN7EXAMPLE", None, None, None).unwrap();
+    save_credential(&file_path, password, "github_token", "ghp_1234567890abcdefghijklmnopqrstuv", None, None, None).unwrap();
+    save_credential(&file_path, password, "db_password", "P@ssw0rd!2024", None, None, None).unwrap();
 
     // When: Reading each credential
     let cred1 = read_credential(&file_path, password, 1).unwrap();
@@ -225,7 +225,7 @@ fn test_read_fails_with_id_zero() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with ID 0 (invalid, IDs are 1-indexed)
     let result = read_credential(&file_path, password, 0);
@@ -243,8 +243,8 @@ fn test_read_fails_with_id_greater_than_count() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Attempting to read with ID 5 (only 2 credentials exist)
     let result = read_credential(&file_path, password, 5);
@@ -262,9 +262,9 @@ fn test_read_fails_with_id_one_more_than_count() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Attempting to read with ID 4 (only 3 credentials exist)
     let result = read_credential(&file_path, password, 4);
@@ -285,7 +285,7 @@ fn test_read_fails_with_wrong_password() {
     let correct_password = "correct123";
     let wrong_password = "wrong456789";
 
-    save_credential(&file_path, correct_password, "key", "value").unwrap();
+    save_credential(&file_path, correct_password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with wrong password
     let result = read_credential(&file_path, wrong_password, 1);
@@ -351,7 +351,7 @@ fn test_read_fails_with_truncated_encrypted_file() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // Truncate the file
     let mut file_content = fs::read(&file_path).unwrap();
@@ -375,7 +375,7 @@ fn test_read_with_empty_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with empty password
     let result = read_credential(&file_path, "", 1);
@@ -390,7 +390,7 @@ fn test_read_with_password_less_than_8_characters() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with 7-character password
     let result = read_credential(&file_path, "pass123", 1);
@@ -407,7 +407,7 @@ fn test_read_with_password_only_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with whitespace-only password
     let result = read_credential(&file_path, "        ", 1);
@@ -424,7 +424,7 @@ fn test_read_with_password_starting_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with password starting with whitespace
     let result = read_credential(&file_path, " password123", 1);
@@ -441,7 +441,7 @@ fn test_read_with_password_ending_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to read with password ending with whitespace
     let result = read_credential(&file_path, "password123 ", 1);
@@ -463,11 +463,11 @@ fn test_read_after_multiple_saves_returns_correct_credential() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first", "value1").unwrap();
-    save_credential(&file_path, password, "second", "value2").unwrap();
-    save_credential(&file_path, password, "third", "value3").unwrap();
-    save_credential(&file_path, password, "fourth", "value4").unwrap();
-    save_credential(&file_path, password, "fifth", "value5").unwrap();
+    save_credential(&file_path, password, "first", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "second", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "third", "value3", None, None, None).unwrap();
+    save_credential(&file_path, password, "fourth", "value4", None, None, None).unwrap();
+    save_credential(&file_path, password, "fifth", "value5", None, None, None).unwrap();
 
     // When: Reading specific credentials by ID
     let cred2 = read_credential(&file_path, password, 2).unwrap();
@@ -487,9 +487,9 @@ fn test_read_with_duplicate_keys_returns_correct_by_id() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "api_key", "first_value").unwrap();
-    save_credential(&file_path, password, "api_key", "second_value").unwrap();
-    save_credential(&file_path, password, "api_key", "third_value").unwrap();
+    save_credential(&file_path, password, "api_key", "first_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "api_key", "second_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "api_key", "third_value", None, None, None).unwrap();
 
     // When: Reading by ID
     let cred1 = read_credential(&file_path, password, 1).unwrap();
@@ -509,7 +509,7 @@ fn test_read_single_character_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "x").unwrap();
+    save_credential(&file_path, password, "key", "x", None, None, None).unwrap();
 
     // When: Reading the credential
     let credential = read_credential(&file_path, password, 1).unwrap();
@@ -527,7 +527,7 @@ fn test_read_empty_key_if_saved() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // This should fail during save due to validation
-    let save_result = save_credential(&file_path, "password123", "", "value");
+    let save_result = save_credential(&file_path, "password123", "", "value", None, None, None);
 
     // Then: Save should fail (based on existing validation)
     assert!(save_result.is_err());

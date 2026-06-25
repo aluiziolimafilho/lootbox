@@ -11,8 +11,8 @@ use gpui_component::input::{Input, InputState};
 use lootbox::Credential;
 
 use crate::app::{
-    AppView, CancelRemove, ConfirmRemove, CopyEnvLine, CopyKey, CopyValue, DetailPane, EditMode,
-    ExportEnv, RemoveCredential, UpdateCredential,
+    AppView, CancelRemove, ConfirmRemove, CopyEnvLine, CopyKey, CopyUrl, CopyValue, DetailPane,
+    EditMode, ExportEnv, RemoveCredential, UpdateCredential,
 };
 use crate::{clipboard, mask};
 
@@ -43,14 +43,20 @@ pub fn render(
         .into_any_element(),
         DetailPane::Form {
             mode,
+            name_input,
             key_input,
             value_input,
+            url_input,
+            description_input,
             value_visible,
             error,
         } => render_form(
             mode,
+            name_input.clone(),
             key_input.clone(),
             value_input.clone(),
+            url_input.clone(),
+            description_input.clone(),
             *value_visible,
             error.clone(),
             window,
@@ -118,9 +124,6 @@ fn render_read(
         mask::MASK.to_string()
     };
 
-    // `Clipboard`'s own click handling already copies to the OS clipboard; `on_copied` routes
-    // the resulting feedback through the same AppView methods the K/V keyboard shortcuts use,
-    // so mouse and keyboard copying show identical status/toast feedback.
     let view = cx.entity();
     let key_clipboard = {
         let view = view.clone();
@@ -139,27 +142,42 @@ fn render_read(
             })
     };
 
+    let mut list = DescriptionList::new().bordered(true);
+    if !credential.name.is_empty() {
+        list = list.item("Name", credential.name.clone(), 1);
+    }
+    list = list
+        .item("Key", credential.key.clone(), 1)
+        .item("Value", displayed_value, 1);
+    if let Some(ref url) = credential.url {
+        list = list.item("URL", url.clone(), 1);
+    }
+    if let Some(ref desc) = credential.description {
+        list = list.item("Description", desc.clone(), 1);
+    }
+
+    let mut copy_bar = div().flex().gap_2().child(key_clipboard).child("Copy key")
+        .child(value_clipboard).child("Copy value");
+
+    if let Some(url) = credential.url.clone() {
+        let view = view.clone();
+        let url_clipboard = Clipboard::new("copy-url")
+            .value(url)
+            .on_copied(move |_, window, cx| {
+                view.update(cx, |view, cx| view.copy_url(&CopyUrl, window, cx));
+            });
+        copy_bar = copy_bar.child(url_clipboard).child("Copy URL");
+    }
+
+    copy_bar = copy_bar.child("(Tab to reveal/hide value)");
+
     div()
         .flex()
         .flex_col()
         .gap_3()
         .child(format!("Credential #{id}"))
-        .child(
-            DescriptionList::new()
-                .bordered(true)
-                .item("Key", credential.key.clone(), 1)
-                .item("Value", displayed_value, 1),
-        )
-        .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(key_clipboard)
-                .child("Copy key")
-                .child(value_clipboard)
-                .child("Copy value")
-                .child("(Tab to reveal/hide value)"),
-        )
+        .child(list)
+        .child(copy_bar)
         .children(clipboard_status.map(|status| div().child(status)))
         .child(
             div()
@@ -197,8 +215,11 @@ fn render_read(
 
 fn render_form(
     mode: &EditMode,
+    name_input: Entity<InputState>,
     key_input: Entity<InputState>,
     value_input: Entity<InputState>,
+    url_input: Entity<InputState>,
+    description_input: Entity<InputState>,
     _value_visible: bool,
     error: Option<String>,
     _window: &mut Window,
@@ -228,6 +249,15 @@ fn render_form(
                                 .flex()
                                 .flex_col()
                                 .gap_1()
+                                .on_action(cx.listener(AppView::advance_from_name_field))
+                                .child("Name")
+                                .child(Input::new(&name_input)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
                                 .on_action(cx.listener(AppView::advance_from_key_field))
                                 .child("Key")
                                 .child(Input::new(&key_input)),
@@ -245,6 +275,23 @@ fn render_form(
                                 .child("Value")
                                 .child(Input::new(&value_input).mask_toggle())
                                 .child("(Tab also toggles reveal)"),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .on_action(cx.listener(AppView::advance_from_url_field))
+                                .child("URL (optional)")
+                                .child(Input::new(&url_input)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child("Description (optional)")
+                                .child(Input::new(&description_input)),
                         ),
                 ),
         )

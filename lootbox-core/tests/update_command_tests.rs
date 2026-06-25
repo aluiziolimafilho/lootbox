@@ -26,10 +26,10 @@ fn test_update_both_key_and_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Updating both key and value
-    let result = update_credential(&file_path, password, 1, Some("new_key"), Some("new_value"));
+    let result = update_credential(&file_path, password, 1, Some("new_key"), Some("new_value"), None, None, None);
 
     // Then: Should succeed and update the credential
     assert!(result.is_ok());
@@ -47,10 +47,10 @@ fn test_update_only_key_keeps_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "original_value").unwrap();
+    save_credential(&file_path, password, "old_key", "original_value", None, None, None).unwrap();
 
     // When: Updating only the key (value is None)
-    let result = update_credential(&file_path, password, 1, Some("new_key"), None);
+    let result = update_credential(&file_path, password, 1, Some("new_key"), None, None, None, None);
 
     // Then: Should update key but keep original value
     assert!(result.is_ok());
@@ -67,10 +67,10 @@ fn test_update_only_value_keeps_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "original_key", "old_value").unwrap();
+    save_credential(&file_path, password, "original_key", "old_value", None, None, None).unwrap();
 
     // When: Updating only the value (key is None)
-    let result = update_credential(&file_path, password, 1, None, Some("new_value"));
+    let result = update_credential(&file_path, password, 1, None, Some("new_value"), None, None, None);
 
     // Then: Should update value but keep original key
     assert!(result.is_ok());
@@ -87,10 +87,10 @@ fn test_update_with_both_none_keeps_both() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "original_key", "original_value").unwrap();
+    save_credential(&file_path, password, "original_key", "original_value", None, None, None).unwrap();
 
     // When: Updating with both None (simulating user pressing enter twice)
-    let result = update_credential(&file_path, password, 1, None, None);
+    let result = update_credential(&file_path, password, 1, None, None, None, None, None);
 
     // Then: Should succeed but keep both values unchanged
     assert!(result.is_ok());
@@ -107,12 +107,12 @@ fn test_update_specific_credential_in_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Updating only the second credential (ID 2)
-    let result = update_credential(&file_path, password, 2, Some("updated_key2"), Some("updated_value2"));
+    let result = update_credential(&file_path, password, 2, Some("updated_key2"), Some("updated_value2"), None, None, None);
 
     // Then: Should update only the second credential
     assert!(result.is_ok());
@@ -134,12 +134,12 @@ fn test_update_first_credential() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first", "value1").unwrap();
-    save_credential(&file_path, password, "second", "value2").unwrap();
-    save_credential(&file_path, password, "third", "value3").unwrap();
+    save_credential(&file_path, password, "first", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "second", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "third", "value3", None, None, None).unwrap();
 
     // When: Updating first credential
-    update_credential(&file_path, password, 1, Some("updated_first"), None).unwrap();
+    update_credential(&file_path, password, 1, Some("updated_first"), None, None, None, None).unwrap();
 
     // Then: First credential should be updated
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -156,12 +156,12 @@ fn test_update_last_credential() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first", "value1").unwrap();
-    save_credential(&file_path, password, "second", "value2").unwrap();
-    save_credential(&file_path, password, "third", "value3").unwrap();
+    save_credential(&file_path, password, "first", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "second", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "third", "value3", None, None, None).unwrap();
 
     // When: Updating last credential
-    update_credential(&file_path, password, 3, None, Some("updated_value3")).unwrap();
+    update_credential(&file_path, password, 3, None, Some("updated_value3"), None, None, None).unwrap();
 
     // Then: Last credential should be updated
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -178,12 +178,12 @@ fn test_update_preserves_order_of_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "a", "1").unwrap();
-    save_credential(&file_path, password, "b", "2").unwrap();
-    save_credential(&file_path, password, "c", "3").unwrap();
+    save_credential(&file_path, password, "a", "1", None, None, None).unwrap();
+    save_credential(&file_path, password, "b", "2", None, None, None).unwrap();
+    save_credential(&file_path, password, "c", "3", None, None, None).unwrap();
 
     // When: Updating middle credential
-    update_credential(&file_path, password, 2, Some("b_updated"), Some("2_updated")).unwrap();
+    update_credential(&file_path, password, 2, Some("b_updated"), Some("2_updated"), None, None, None).unwrap();
 
     // Then: Order should be preserved
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -199,12 +199,12 @@ fn test_update_with_special_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "simple_key", "simple_value").unwrap();
+    save_credential(&file_path, password, "simple_key", "simple_value", None, None, None).unwrap();
 
     // When: Updating with special characters
     let special_key = "key@#$%^&*()";
     let special_value = "value!@#$%^&*(){}[]|\\:;\"'<>,.?/~`";
-    update_credential(&file_path, password, 1, Some(special_key), Some(special_value)).unwrap();
+    update_credential(&file_path, password, 1, Some(special_key), Some(special_value), None, None, None).unwrap();
 
     // Then: Should store special characters correctly
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -219,12 +219,12 @@ fn test_update_with_unicode_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
 
     // When: Updating with unicode
     let unicode_key = "密钥🔑";
     let unicode_value = "秘密値🔐";
-    update_credential(&file_path, password, 1, Some(unicode_key), Some(unicode_value)).unwrap();
+    update_credential(&file_path, password, 1, Some(unicode_key), Some(unicode_value), None, None, None).unwrap();
 
     // Then: Should store unicode correctly
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -239,12 +239,12 @@ fn test_update_with_very_long_values() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
 
     // When: Updating with values at the maximum allowed lengths
     let long_key = "k".repeat(64);
     let long_value = "v".repeat(5000);
-    update_credential(&file_path, password, 1, Some(&long_key), Some(&long_value)).unwrap();
+    update_credential(&file_path, password, 1, Some(&long_key), Some(&long_value), None, None, None).unwrap();
 
     // Then: Should store long values correctly
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -259,12 +259,12 @@ fn test_update_with_newlines() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
 
     // When: Updating with newlines
     let key_with_newline = "key\nwith\nnewlines";
     let value_with_newline = "value\nwith\nnewlines";
-    update_credential(&file_path, password, 1, Some(key_with_newline), Some(value_with_newline)).unwrap();
+    update_credential(&file_path, password, 1, Some(key_with_newline), Some(value_with_newline), None, None, None).unwrap();
 
     // Then: Should store newlines correctly
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -279,12 +279,12 @@ fn test_update_after_multiple_updates() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
 
     // When: Performing multiple updates
-    update_credential(&file_path, password, 1, Some("key2"), Some("value2")).unwrap();
-    update_credential(&file_path, password, 1, Some("key3"), None).unwrap();
-    update_credential(&file_path, password, 1, None, Some("value3")).unwrap();
+    update_credential(&file_path, password, 1, Some("key2"), Some("value2"), None, None, None).unwrap();
+    update_credential(&file_path, password, 1, Some("key3"), None, None, None, None).unwrap();
+    update_credential(&file_path, password, 1, None, Some("value3"), None, None, None).unwrap();
 
     // Then: Should have the final updated values
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -303,10 +303,10 @@ fn test_update_fails_with_id_zero() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with ID 0
-    let result = update_credential(&file_path, password, 0, Some("new_key"), Some("new_value"));
+    let result = update_credential(&file_path, password, 0, Some("new_key"), Some("new_value"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -321,11 +321,11 @@ fn test_update_fails_with_id_greater_than_count() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Attempting to update with ID 5
-    let result = update_credential(&file_path, password, 5, Some("new"), Some("new"));
+    let result = update_credential(&file_path, password, 5, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -340,12 +340,12 @@ fn test_update_fails_with_id_one_more_than_count() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Attempting to update with ID 4
-    let result = update_credential(&file_path, password, 4, Some("new"), Some("new"));
+    let result = update_credential(&file_path, password, 4, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -363,10 +363,10 @@ fn test_update_fails_with_wrong_password() {
     let correct_password = "correct123";
     let wrong_password = "wrong456789";
 
-    save_credential(&file_path, correct_password, "key", "value").unwrap();
+    save_credential(&file_path, correct_password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with wrong password
-    let result = update_credential(&file_path, wrong_password, 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, wrong_password, 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -383,7 +383,7 @@ fn test_update_fails_when_file_does_not_exist() {
     assert!(!file_path.exists());
 
     // When: Attempting to update
-    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -400,7 +400,7 @@ fn test_update_fails_with_corrupted_file() {
     fs::write(&file_path, "this is not encrypted data").expect("Failed to write corrupted file");
 
     // When: Attempting to update
-    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -417,7 +417,7 @@ fn test_update_fails_with_empty_file() {
     fs::write(&file_path, "").expect("Failed to create empty file");
 
     // When: Attempting to update
-    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -429,7 +429,7 @@ fn test_update_fails_with_truncated_encrypted_file() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // Truncate the file
     let mut file_content = fs::read(&file_path).unwrap();
@@ -437,7 +437,7 @@ fn test_update_fails_with_truncated_encrypted_file() {
     fs::write(&file_path, file_content).unwrap();
 
     // When: Attempting to update
-    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "password123", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -453,10 +453,10 @@ fn test_update_with_empty_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with empty password
-    let result = update_credential(&file_path, "", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error (password validation)
     assert!(result.is_err());
@@ -468,10 +468,10 @@ fn test_update_with_password_less_than_8_characters() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with 7-character password
-    let result = update_credential(&file_path, "pass123", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "pass123", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -485,10 +485,10 @@ fn test_update_with_password_only_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with whitespace-only password
-    let result = update_credential(&file_path, "        ", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "        ", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -502,10 +502,10 @@ fn test_update_with_password_starting_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with password starting with whitespace
-    let result = update_credential(&file_path, " password123", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, " password123", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -519,10 +519,10 @@ fn test_update_with_password_ending_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to update with password ending with whitespace
-    let result = update_credential(&file_path, "password123 ", 1, Some("new"), Some("new"));
+    let result = update_credential(&file_path, "password123 ", 1, Some("new"), Some("new"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -541,10 +541,10 @@ fn test_update_fails_with_empty_new_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Attempting to update with empty string key (not None, but empty string)
-    let result = update_credential(&file_path, password, 1, Some(""), Some("new_value"));
+    let result = update_credential(&file_path, password, 1, Some(""), Some("new_value"), None, None, None);
 
     // Then: Should return an error (empty key is invalid)
     assert!(result.is_err());
@@ -559,10 +559,10 @@ fn test_update_fails_with_empty_new_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Attempting to update with empty string value (not None, but empty string)
-    let result = update_credential(&file_path, password, 1, Some("new_key"), Some(""));
+    let result = update_credential(&file_path, password, 1, Some("new_key"), Some(""), None, None, None);
 
     // Then: Should return an error (empty value is invalid)
     assert!(result.is_err());
@@ -577,10 +577,10 @@ fn test_update_fails_with_whitespace_only_new_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Attempting to update with whitespace-only key
-    let result = update_credential(&file_path, password, 1, Some("   "), Some("new_value"));
+    let result = update_credential(&file_path, password, 1, Some("   "), Some("new_value"), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -595,10 +595,10 @@ fn test_update_fails_with_whitespace_only_new_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Attempting to update with whitespace-only value
-    let result = update_credential(&file_path, password, 1, Some("new_key"), Some("   "));
+    let result = update_credential(&file_path, password, 1, Some("new_key"), Some("   "), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -613,11 +613,11 @@ fn test_update_with_secret_key_exactly_64_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Updating with exactly 64-character key (maximum allowed)
     let key = "a".repeat(64);
-    let result = update_credential(&file_path, password, 1, Some(&key), None);
+    let result = update_credential(&file_path, password, 1, Some(&key), None, None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -630,11 +630,11 @@ fn test_update_with_secret_key_exceeding_64_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Attempting to update with 65-character key (exceeds maximum)
     let key = "a".repeat(65);
-    let result = update_credential(&file_path, password, 1, Some(&key), None);
+    let result = update_credential(&file_path, password, 1, Some(&key), None, None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -649,11 +649,11 @@ fn test_update_with_secret_value_exactly_5000_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Updating with exactly 5000-character value (maximum allowed)
     let value = "a".repeat(5000);
-    let result = update_credential(&file_path, password, 1, None, Some(&value));
+    let result = update_credential(&file_path, password, 1, None, Some(&value), None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -666,11 +666,11 @@ fn test_update_with_secret_value_exceeding_5000_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "old_key", "old_value").unwrap();
+    save_credential(&file_path, password, "old_key", "old_value", None, None, None).unwrap();
 
     // When: Attempting to update with 5001-character value (exceeds maximum)
     let value = "a".repeat(5001);
-    let result = update_credential(&file_path, password, 1, None, Some(&value));
+    let result = update_credential(&file_path, password, 1, None, Some(&value), None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -689,11 +689,11 @@ fn test_update_does_not_affect_file_if_error() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Attempting to update with invalid ID
-    let result = update_credential(&file_path, password, 10, Some("new"), Some("new"));
+    let result = update_credential(&file_path, password, 10, Some("new"), Some("new"), None, None, None);
 
     // Then: Should fail and file should remain unchanged
     assert!(result.is_err());
@@ -711,10 +711,10 @@ fn test_update_single_credential_file() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "only_key", "only_value").unwrap();
+    save_credential(&file_path, password, "only_key", "only_value", None, None, None).unwrap();
 
     // When: Updating the single credential
-    update_credential(&file_path, password, 1, Some("updated_key"), Some("updated_value")).unwrap();
+    update_credential(&file_path, password, 1, Some("updated_key"), Some("updated_value"), None, None, None).unwrap();
 
     // Then: Should update successfully
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -730,11 +730,11 @@ fn test_update_can_create_duplicate_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Updating second credential to have same key as first
-    update_credential(&file_path, password, 2, Some("key1"), Some("updated_value2")).unwrap();
+    update_credential(&file_path, password, 2, Some("key1"), Some("updated_value2"), None, None, None).unwrap();
 
     // Then: Should allow duplicate keys (they're distinguished by position)
     let credentials = list_credentials(&file_path, password).unwrap();

@@ -361,7 +361,7 @@ fn test_mcp_tool_save_credential_fails_with_wrong_password_on_existing_file() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         3,
@@ -433,7 +433,7 @@ fn test_mcp_tool_list_credentials_returns_masked_values() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "api_key", "super_secret").unwrap();
+    save_credential(&file_path, "password123", "api_key", "super_secret", None, None, None).unwrap();
 
     let request = build_tool_call(
         4,
@@ -458,8 +458,8 @@ fn test_mcp_tool_list_credentials_shows_position_ids() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "first_key", "val1").unwrap();
-    save_credential(&file_path, "password123", "second_key", "val2").unwrap();
+    save_credential(&file_path, "password123", "first_key", "val1", None, None, None).unwrap();
+    save_credential(&file_path, "password123", "second_key", "val2", None, None, None).unwrap();
 
     let request = build_tool_call(
         4,
@@ -483,7 +483,7 @@ fn test_mcp_tool_list_credentials_fails_with_wrong_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         4,
@@ -529,7 +529,7 @@ fn test_mcp_tool_read_credential_returns_plain_text_key_and_value() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "api_key", "super_secret").unwrap();
+    save_credential(&file_path, "password123", "api_key", "super_secret", None, None, None).unwrap();
 
     let request = build_tool_call(
         5,
@@ -554,9 +554,9 @@ fn test_mcp_tool_read_credential_reads_correct_entry_by_id() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "first", "value1").unwrap();
-    save_credential(&file_path, "password123", "second", "value2").unwrap();
-    save_credential(&file_path, "password123", "third", "value3").unwrap();
+    save_credential(&file_path, "password123", "first", "value1", None, None, None).unwrap();
+    save_credential(&file_path, "password123", "second", "value2", None, None, None).unwrap();
+    save_credential(&file_path, "password123", "third", "value3", None, None, None).unwrap();
 
     let request = build_tool_call(
         5,
@@ -583,7 +583,7 @@ fn test_mcp_tool_read_credential_fails_with_invalid_id() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         5,
@@ -606,7 +606,7 @@ fn test_mcp_tool_read_credential_fails_with_wrong_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         5,
@@ -633,7 +633,7 @@ fn test_mcp_tool_update_credential_changes_key_and_value() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "old_key", "old_value").unwrap();
+    save_credential(&file_path, "password123", "old_key", "old_value", None, None, None).unwrap();
 
     let request = build_tool_call(
         6,
@@ -674,7 +674,7 @@ fn test_mcp_tool_update_credential_with_only_key_keeps_value() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "old_key", "original_value").unwrap();
+    save_credential(&file_path, "password123", "old_key", "original_value", None, None, None).unwrap();
 
     let request = build_tool_call(
         6,
@@ -713,7 +713,7 @@ fn test_mcp_tool_update_credential_fails_with_invalid_id() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         6,
@@ -737,7 +737,7 @@ fn test_mcp_tool_update_credential_fails_with_wrong_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         6,
@@ -765,8 +765,8 @@ fn test_mcp_tool_remove_credential_removes_the_entry() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key1", "value1").unwrap();
-    save_credential(&file_path, "password123", "key2", "value2").unwrap();
+    save_credential(&file_path, "password123", "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, "password123", "key2", "value2", None, None, None).unwrap();
 
     let request = build_tool_call(
         7,
@@ -804,7 +804,7 @@ fn test_mcp_tool_remove_credential_fails_with_invalid_id() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         7,
@@ -827,7 +827,7 @@ fn test_mcp_tool_remove_credential_fails_with_wrong_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         7,
@@ -854,7 +854,7 @@ fn test_mcp_tool_generate_env_vars_returns_export_statements() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "api key", "secret123").unwrap();
+    save_credential(&file_path, "password123", "api key", "secret123", None, None, None).unwrap();
 
     let request = build_tool_call(
         8,
@@ -879,8 +879,8 @@ fn test_mcp_tool_generate_env_vars_reports_invalid_keys_separately() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "valid key", "ok").unwrap();
-    save_credential(&file_path, "password123", "bad-key", "ok").unwrap();
+    save_credential(&file_path, "password123", "valid key", "ok", None, None, None).unwrap();
+    save_credential(&file_path, "password123", "bad-key", "ok", None, None, None).unwrap();
 
     // Select the invalid key credential (ID 2)
     let request = build_tool_call(
@@ -905,7 +905,7 @@ fn test_mcp_tool_generate_env_vars_fails_with_wrong_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         8,
@@ -928,7 +928,7 @@ fn test_mcp_tool_generate_env_vars_fails_without_id() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         8,
@@ -979,7 +979,7 @@ fn test_mcp_all_error_results_contain_text_content() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "correct123", "key", "value").unwrap();
+    save_credential(&file_path, "correct123", "key", "value", None, None, None).unwrap();
 
     let request = build_tool_call(
         9,

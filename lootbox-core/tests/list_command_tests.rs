@@ -24,8 +24,8 @@ fn test_list_successfully_decrypts_and_displays_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Listing credentials with correct password
     let result = list_credentials(&file_path, password);
@@ -45,7 +45,7 @@ fn test_list_single_credential() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "api_key", "secret_value").unwrap();
+    save_credential(&file_path, password, "api_key", "secret_value", None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -63,9 +63,9 @@ fn test_list_multiple_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "aws_key", "aws_secret").unwrap();
-    save_credential(&file_path, password, "github_token", "ghp_token").unwrap();
-    save_credential(&file_path, password, "api_key", "sk_key").unwrap();
+    save_credential(&file_path, password, "aws_key", "aws_secret", None, None, None).unwrap();
+    save_credential(&file_path, password, "github_token", "ghp_token", None, None, None).unwrap();
+    save_credential(&file_path, password, "api_key", "sk_key", None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -81,9 +81,9 @@ fn test_list_display_shows_position_ids_in_bracket_format() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Getting display output
     let display = get_list_display(&file_path, password).unwrap();
@@ -101,8 +101,8 @@ fn test_list_display_shows_keys_in_plain_text() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "my_secret_key", "my_secret_value").unwrap();
-    save_credential(&file_path, password, "another_key", "another_value").unwrap();
+    save_credential(&file_path, password, "my_secret_key", "my_secret_value", None, None, None).unwrap();
+    save_credential(&file_path, password, "another_key", "another_value", None, None, None).unwrap();
 
     // When: Getting display output
     let display = get_list_display(&file_path, password).unwrap();
@@ -119,9 +119,9 @@ fn test_list_display_hides_values_with_exactly_10_asterisks() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "secret_value_123").unwrap();
-    save_credential(&file_path, password, "key2", "x").unwrap();  // single char
-    save_credential(&file_path, password, "key3", &"a".repeat(1000)).unwrap();  // very long
+    save_credential(&file_path, password, "key1", "secret_value_123", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "x", None, None, None).unwrap();  // single char
+    save_credential(&file_path, password, "key3", &"a".repeat(1000), None, None, None).unwrap();  // very long
 
     // When: Getting display output
     let display = get_list_display(&file_path, password).unwrap();
@@ -149,7 +149,7 @@ fn test_list_display_does_not_show_actual_values() {
     let password = "password123";
     let secret_value = "ThisIsMySecretValue123";
 
-    save_credential(&file_path, password, "api_key", secret_value).unwrap();
+    save_credential(&file_path, password, "api_key", secret_value, None, None, None).unwrap();
 
     // When: Getting display output
     let display = get_list_display(&file_path, password).unwrap();
@@ -165,9 +165,9 @@ fn test_list_preserves_order_of_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "first", "value1").unwrap();
-    save_credential(&file_path, password, "second", "value2").unwrap();
-    save_credential(&file_path, password, "third", "value3").unwrap();
+    save_credential(&file_path, password, "first", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "second", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "third", "value3", None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -190,7 +190,7 @@ fn test_list_fails_with_wrong_password() {
     let correct_password = "correct123";
     let wrong_password = "wrong456789";
 
-    save_credential(&file_path, correct_password, "key", "value").unwrap();
+    save_credential(&file_path, correct_password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to list with wrong password
     let result = list_credentials(&file_path, wrong_password);
@@ -262,7 +262,7 @@ fn test_list_fails_with_truncated_encrypted_file() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // Truncate the file
     let mut file_content = fs::read(&file_path).unwrap();
@@ -286,7 +286,7 @@ fn test_list_with_empty_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to list with empty password
     let result = list_credentials(&file_path, "");
@@ -301,7 +301,7 @@ fn test_list_with_password_less_than_8_characters() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to list with 7-character password
     let result = list_credentials(&file_path, "pass123");
@@ -318,7 +318,7 @@ fn test_list_with_password_only_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to list with whitespace-only password
     let result = list_credentials(&file_path, "        ");
@@ -335,7 +335,7 @@ fn test_list_with_password_starting_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to list with password starting with whitespace
     let result = list_credentials(&file_path, " password123");
@@ -352,7 +352,7 @@ fn test_list_with_password_ending_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to list with password ending with whitespace
     let result = list_credentials(&file_path, "password123 ");
@@ -375,7 +375,7 @@ fn test_list_with_special_characters_in_key_and_value() {
     let special_key = "key@#$%^&*()";
     let special_value = "value!@#$%^&*(){}[]|\\:;\"'<>,.?/~`";
 
-    save_credential(&file_path, "password123", special_key, special_value).unwrap();
+    save_credential(&file_path, "password123", special_key, special_value, None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, "password123").unwrap();
@@ -398,7 +398,7 @@ fn test_list_with_unicode_characters() {
     let unicode_key = "日本語キー";
     let unicode_value = "中文值🔑";
 
-    save_credential(&file_path, "password123", unicode_key, unicode_value).unwrap();
+    save_credential(&file_path, "password123", unicode_key, unicode_value, None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, "password123").unwrap();
@@ -421,7 +421,7 @@ fn test_list_with_newlines_in_key_and_value() {
     let key_with_newline = "multi\nline\nkey";
     let value_with_newline = "multi\nline\nvalue";
 
-    save_credential(&file_path, "password123", key_with_newline, value_with_newline).unwrap();
+    save_credential(&file_path, "password123", key_with_newline, value_with_newline, None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, "password123").unwrap();
@@ -438,7 +438,7 @@ fn test_list_with_very_long_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let long_key = "a".repeat(64);
 
-    save_credential(&file_path, "password123", &long_key, "value").unwrap();
+    save_credential(&file_path, "password123", &long_key, "value", None, None, None).unwrap();
 
     // When: Listing credentials
     let credentials = list_credentials(&file_path, "password123").unwrap();
@@ -459,7 +459,7 @@ fn test_list_display_position_ids_are_sequential() {
     let password = "password123";
 
     for i in 1..=5 {
-        save_credential(&file_path, password, &format!("key{}", i), &format!("value{}", i)).unwrap();
+        save_credential(&file_path, password, &format!("key{}", i), &format!("value{}", i), None, None, None).unwrap();
     }
 
     // When: Getting display output
@@ -481,7 +481,7 @@ fn test_list_display_single_credential_shows_id_1() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "only_key", "only_value").unwrap();
+    save_credential(&file_path, "password123", "only_key", "only_value", None, None, None).unwrap();
 
     // When: Getting display output
     let display = get_list_display(&file_path, "password123").unwrap();
@@ -499,8 +499,8 @@ fn test_list_display_format_specification() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "api_key", "secret123").unwrap();
-    save_credential(&file_path, password, "db_pass", "dbsecret456").unwrap();
+    save_credential(&file_path, password, "api_key", "secret123", None, None, None).unwrap();
+    save_credential(&file_path, password, "db_pass", "dbsecret456", None, None, None).unwrap();
 
     // When: Getting display output
     let display = get_list_display(&file_path, password).unwrap();
@@ -539,7 +539,7 @@ fn test_list_retrieves_exactly_what_was_saved() {
         let file_path = get_test_file_path(&temp_dir, &format!("test_{}.enc", i));
 
         // When: Saving and then listing
-        save_credential(&file_path, "password123", key, value).unwrap();
+        save_credential(&file_path, "password123", key, value, None, None, None).unwrap();
         let credentials = list_credentials(&file_path, "password123").unwrap();
 
         // Then: Should retrieve exactly what was saved
@@ -556,8 +556,8 @@ fn test_list_after_save_with_different_passwords() {
     let file_path1 = get_test_file_path(&temp_dir, "file1.enc");
     let file_path2 = get_test_file_path(&temp_dir, "file2.enc");
 
-    save_credential(&file_path1, "password123", "key1", "value1").unwrap();
-    save_credential(&file_path2, "different456", "key2", "value2").unwrap();
+    save_credential(&file_path1, "password123", "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path2, "different456", "key2", "value2", None, None, None).unwrap();
 
     // When: Listing with correct passwords
     let creds1 = list_credentials(&file_path1, "password123").unwrap();
@@ -581,8 +581,8 @@ fn test_list_display_formatting_consistency() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Getting display output multiple times
     let display1 = get_list_display(&file_path, password).unwrap();

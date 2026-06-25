@@ -34,6 +34,9 @@ fn seed_vault(count: usize) -> PathBuf {
             VAULT_PASSWORD,
             &format!("key{i}"),
             &format!("value{i}"),
+            None,
+            None,
+            None,
         )
         .expect("seed credential");
     }
@@ -262,7 +265,7 @@ fn password_new_vault_valid_password_transitions_to_empty_unlocked(cx: &mut Test
 fn password_unlock_wrong_password_sets_error(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -313,7 +316,7 @@ fn password_unlock_correct_password_loads_existing_credentials_and_shows_first(
 ) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -1007,7 +1010,7 @@ fn env_vars_valid_key_shows_created_entry(cx: &mut TestAppContext) {
 fn env_vars_invalid_key_shows_invalid_reason(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, VAULT_PASSWORD, "api@key", "secret-value")
+    lootbox::save_credential(&file_path, VAULT_PASSWORD, "api@key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_unlocked_window(cx, file_path);

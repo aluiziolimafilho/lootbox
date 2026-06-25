@@ -67,14 +67,17 @@ fn handle_tools_list(id: &Value) -> String {
             "tools": [
                 {
                     "name": "save_credential",
-                    "description": "Save a new credential (key-value pair) to an encrypted file. Creates a new file or appends to an existing one when the password matches.",
+                    "description": "Save a new credential to an encrypted file. Creates a new file or appends to an existing one when the password matches.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "filename": { "type": "string", "description": "Path to the encrypted credentials file" },
-                            "password": { "type": "string", "description": "File password (min 8 chars, no leading/trailing whitespace)" },
-                            "key":      { "type": "string", "description": "Name of the secret (e.g. 'API_KEY')" },
-                            "value":    { "type": "string", "description": "Secret value to store" }
+                            "filename":    { "type": "string", "description": "Path to the encrypted credentials file" },
+                            "password":    { "type": "string", "description": "File password (min 8 chars, no leading/trailing whitespace)" },
+                            "key":         { "type": "string", "description": "Name of the secret (e.g. 'API_KEY')" },
+                            "value":       { "type": "string", "description": "Secret value to store" },
+                            "name":        { "type": "string", "description": "Human-readable label for the credential (max 255 chars, optional)" },
+                            "description": { "type": "string", "description": "Description or notes (max 5000 chars, optional)" },
+                            "url":         { "type": "string", "description": "Associated URL (max 3000 chars, optional)" }
                         },
                         "required": ["filename", "password", "key", "value"]
                     }
@@ -106,15 +109,18 @@ fn handle_tools_list(id: &Value) -> String {
                 },
                 {
                     "name": "update_credential",
-                    "description": "Update an existing credential by its 1-based position ID. Omit 'key' or 'value' to keep the current value.",
+                    "description": "Update an existing credential by its 1-based position ID. Omit any field to keep the current value. Pass an empty string for 'description' or 'url' to clear them.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "filename": { "type": "string",  "description": "Path to the encrypted credentials file" },
-                            "password": { "type": "string",  "description": "File password" },
-                            "id":       { "type": "integer", "description": "1-based position ID of the credential to update" },
-                            "key":      { "type": "string",  "description": "New key name (optional)" },
-                            "value":    { "type": "string",  "description": "New secret value (optional)" }
+                            "filename":    { "type": "string",  "description": "Path to the encrypted credentials file" },
+                            "password":    { "type": "string",  "description": "File password" },
+                            "id":          { "type": "integer", "description": "1-based position ID of the credential to update" },
+                            "key":         { "type": "string",  "description": "New key name (optional)" },
+                            "value":       { "type": "string",  "description": "New secret value (optional)" },
+                            "name":        { "type": "string",  "description": "New human-readable label (optional, max 255 chars)" },
+                            "description": { "type": "string",  "description": "New description (optional, max 5000 chars; empty string clears it)" },
+                            "url":         { "type": "string",  "description": "New URL (optional, max 3000 chars; empty string clears it)" }
                         },
                         "required": ["filename", "password", "id"]
                     }
@@ -191,7 +197,11 @@ fn tool_save_credential(id: &Value, args: &Value) -> String {
         None => return tool_error_response(id, "Missing required argument: value"),
     };
 
-    match save_credential(Path::new(filename), password, key, value) {
+    let name = args["name"].as_str();
+    let description = args["description"].as_str();
+    let url = args["url"].as_str();
+
+    match save_credential(Path::new(filename), password, key, value, name, description, url) {
         Ok(()) => tool_success_response(id, "Credential saved successfully."),
         Err(e) => tool_error_response(id, &e.to_string()),
     }
@@ -262,8 +272,11 @@ fn tool_update_credential(id: &Value, args: &Value) -> String {
 
     let new_key = args["key"].as_str();
     let new_value = args["value"].as_str();
+    let new_name = args["name"].as_str();
+    let new_description = args["description"].as_str();
+    let new_url = args["url"].as_str();
 
-    match update_credential(Path::new(filename), password, position_id, new_key, new_value) {
+    match update_credential(Path::new(filename), password, position_id, new_key, new_value, new_name, new_description, new_url) {
         Ok(()) => tool_success_response(id, "Credential updated successfully."),
         Err(e) => tool_error_response(id, &e.to_string()),
     }

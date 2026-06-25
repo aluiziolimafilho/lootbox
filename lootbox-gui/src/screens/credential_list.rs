@@ -86,7 +86,7 @@ pub fn render(
                         .on_click(cx.listener(move |view, _, window, cx| {
                             view.select_credential(i, window, cx);
                         }))
-                        .child(credential.key.clone())
+                        .child(credential.display_name().to_string())
                         .child(mask::MASK)
                 })),
         )

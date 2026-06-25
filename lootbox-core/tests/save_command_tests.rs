@@ -22,7 +22,7 @@ fn test_save_creates_new_file_when_not_exists() {
     assert!(!file_path.exists(), "File should not exist initially");
 
     // When: Saving a credential with password "mypassword123"
-    save_credential(&file_path, "mypassword123", "api_key", "sk-1234567890").unwrap();
+    save_credential(&file_path, "mypassword123", "api_key", "sk-1234567890", None, None, None).unwrap();
 
     // Then: File should be created
     assert!(file_path.exists());
@@ -40,10 +40,10 @@ fn test_save_adds_to_existing_file() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
 
     // When: Saving a second credential to the same file
-    let result = save_credential(&file_path, password, "key2", "value2");
+    let result = save_credential(&file_path, password, "key2", "value2", None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -62,9 +62,9 @@ fn test_save_multiple_credentials_to_same_file() {
     let password = "password123";
 
     // When: Saving multiple credentials sequentially
-    save_credential(&file_path, password, "aws_key", "aws_secret_123").unwrap();
-    save_credential(&file_path, password, "github_token", "ghp_token_456").unwrap();
-    save_credential(&file_path, password, "api_key", "sk_key_789").unwrap();
+    save_credential(&file_path, password, "aws_key", "aws_secret_123", None, None, None).unwrap();
+    save_credential(&file_path, password, "github_token", "ghp_token_456", None, None, None).unwrap();
+    save_credential(&file_path, password, "api_key", "sk_key_789", None, None, None).unwrap();
 
     // Then: All credentials should be stored
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -81,10 +81,10 @@ fn test_save_fails_with_wrong_password_on_existing_file() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let original_password = "correct123";
 
-    save_credential(&file_path, original_password, "key1", "value1").unwrap();
+    save_credential(&file_path, original_password, "key1", "value1", None, None, None).unwrap();
 
     // When: Attempting to save with wrong password
-    let result = save_credential(&file_path, "wrong-password", "key2", "value2");
+    let result = save_credential(&file_path, "wrong-password", "key2", "value2", None, None, None);
 
     // Then: Should return an error (cannot decrypt existing file)
     assert!(result.is_err());
@@ -102,7 +102,7 @@ fn test_save_fails_with_corrupted_existing_file() {
     fs::write(&file_path, "this is not a valid encrypted file").unwrap();
 
     // When: Attempting to add a credential
-    let result = save_credential(&file_path, "password123", "key", "value");
+    let result = save_credential(&file_path, "password123", "key", "value", None, None, None);
 
     // Then: Should return an error (cannot validate existing file)
     assert!(result.is_err());
@@ -117,10 +117,10 @@ fn test_save_preserves_existing_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "mypassword";
 
-    save_credential(&file_path, password, "original_key", "original_value").unwrap();
+    save_credential(&file_path, password, "original_key", "original_value", None, None, None).unwrap();
 
     // When: Adding a new credential
-    save_credential(&file_path, password, "new_key", "new_value").unwrap();
+    save_credential(&file_path, password, "new_key", "new_value", None, None, None).unwrap();
 
     // Then: Original credential should still exist
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -136,10 +136,10 @@ fn test_save_allows_duplicate_keys() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "api_key", "old_value").unwrap();
+    save_credential(&file_path, password, "api_key", "old_value", None, None, None).unwrap();
 
     // When: Saving with the same key but different value
-    let result = save_credential(&file_path, password, "api_key", "new_value");
+    let result = save_credential(&file_path, password, "api_key", "new_value", None, None, None);
 
     // Then: Should succeed (allows duplicates - user manages them)
     assert!(result.is_ok());
@@ -158,7 +158,7 @@ fn test_save_encrypts_file_content() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving a credential with secret value "my-secret-value"
-    save_credential(&file_path, "password123", "key1", "my-secret-value").unwrap();
+    save_credential(&file_path, "password123", "key1", "my-secret-value", None, None, None).unwrap();
 
     // Then: File content should not contain plain text secret
     let content = fs::read(&file_path).unwrap();
@@ -178,7 +178,7 @@ fn test_save_with_empty_password() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with empty password (less than 8 characters)
-    let result = save_credential(&file_path, "", "key", "value");
+    let result = save_credential(&file_path, "", "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -193,7 +193,7 @@ fn test_save_with_password_less_than_8_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with 7-character password
-    let result = save_credential(&file_path, "pass123", "key", "value");
+    let result = save_credential(&file_path, "pass123", "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -210,7 +210,7 @@ fn test_save_with_password_exactly_8_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving with exactly 8-character password
-    let result = save_credential(&file_path, "password", "key", "value");
+    let result = save_credential(&file_path, "password", "key", "value", None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -224,7 +224,7 @@ fn test_save_with_password_only_whitespace() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with whitespace-only password (even if >= 8 chars)
-    let result = save_credential(&file_path, "        ", "key", "value");
+    let result = save_credential(&file_path, "        ", "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -241,7 +241,7 @@ fn test_save_with_password_starting_with_whitespace() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with password starting with whitespace
-    let result = save_credential(&file_path, " password123", "key", "value");
+    let result = save_credential(&file_path, " password123", "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -258,7 +258,7 @@ fn test_save_with_password_ending_with_whitespace() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with password ending with whitespace
-    let result = save_credential(&file_path, "password123 ", "key", "value");
+    let result = save_credential(&file_path, "password123 ", "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -275,7 +275,7 @@ fn test_save_with_password_containing_whitespace_in_middle() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving with password containing whitespace in the middle (should be valid)
-    let result = save_credential(&file_path, "pass word 123", "key", "value");
+    let result = save_credential(&file_path, "pass word 123", "key", "value", None, None, None);
 
     // Then: Should succeed (whitespace in middle is allowed)
     assert!(result.is_ok());
@@ -290,7 +290,7 @@ fn test_save_with_password_exactly_32_characters() {
 
     // When: Saving with exactly 32-character password (maximum allowed)
     let password = "a".repeat(32);
-    let result = save_credential(&file_path, &password, "key", "value");
+    let result = save_credential(&file_path, &password, "key", "value", None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -304,7 +304,7 @@ fn test_save_with_password_exceeding_32_characters() {
 
     // When: Attempting to save with 33-character password (exceeds maximum)
     let password = "a".repeat(33);
-    let result = save_credential(&file_path, &password, "key", "value");
+    let result = save_credential(&file_path, &password, "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -325,7 +325,7 @@ fn test_save_with_empty_secret_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with empty secret_key (required field)
-    let result = save_credential(&file_path, "password123", "", "value");
+    let result = save_credential(&file_path, "password123", "", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -340,7 +340,7 @@ fn test_save_with_whitespace_only_key() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with whitespace-only key
-    let result = save_credential(&file_path, "password123", "   ", "value");
+    let result = save_credential(&file_path, "password123", "   ", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -356,7 +356,7 @@ fn test_save_with_secret_key_exactly_64_characters() {
 
     // When: Saving with exactly 64-character secret key (maximum allowed)
     let key = "a".repeat(64);
-    let result = save_credential(&file_path, "password123", &key, "value");
+    let result = save_credential(&file_path, "password123", &key, "value", None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -370,7 +370,7 @@ fn test_save_with_secret_key_exceeding_64_characters() {
 
     // When: Attempting to save with 65-character secret key (exceeds maximum)
     let key = "a".repeat(65);
-    let result = save_credential(&file_path, "password123", &key, "value");
+    let result = save_credential(&file_path, "password123", &key, "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -391,7 +391,7 @@ fn test_save_with_empty_secret_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with empty secret_value (required field)
-    let result = save_credential(&file_path, "password123", "key", "");
+    let result = save_credential(&file_path, "password123", "key", "", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -406,7 +406,7 @@ fn test_save_with_whitespace_only_value() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Attempting to save with whitespace-only value
-    let result = save_credential(&file_path, "password123", "key", "   ");
+    let result = save_credential(&file_path, "password123", "key", "   ", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -422,7 +422,7 @@ fn test_save_with_secret_value_exactly_5000_characters() {
 
     // When: Saving with exactly 5000-character secret value (maximum allowed)
     let value = "a".repeat(5000);
-    let result = save_credential(&file_path, "password123", "key", &value);
+    let result = save_credential(&file_path, "password123", "key", &value, None, None, None);
 
     // Then: Should succeed
     assert!(result.is_ok());
@@ -436,7 +436,7 @@ fn test_save_with_secret_value_exceeding_5000_characters() {
 
     // When: Attempting to save with 5001-character secret value (exceeds maximum)
     let value = "a".repeat(5001);
-    let result = save_credential(&file_path, "password123", "key", &value);
+    let result = save_credential(&file_path, "password123", "key", &value, None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -459,7 +459,7 @@ fn test_save_with_special_characters_in_key_and_value() {
     // When: Saving with special characters
     let special_key = "key@#$%^&*()";
     let special_value = "value!@#$%^&*(){}[]|\\:;\"'<>,.?/~`";
-    let result = save_credential(&file_path, "password123", special_key, special_value);
+    let result = save_credential(&file_path, "password123", special_key, special_value, None, None, None);
 
     // Then: Should save successfully
     assert!(result.is_ok());
@@ -475,7 +475,7 @@ fn test_save_with_unicode_characters() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving with unicode characters
-    let result = save_credential(&file_path, "password123", "日本語キー", "中文值🔑");
+    let result = save_credential(&file_path, "password123", "日本語キー", "中文值🔑", None, None, None);
 
     // Then: Should save successfully
     assert!(result.is_ok());
@@ -493,7 +493,7 @@ fn test_save_with_newlines_in_key_and_value() {
     // When: Saving with newlines
     let key_with_newline = "multi\nline\nkey";
     let value_with_newline = "multi\nline\nvalue";
-    let result = save_credential(&file_path, "password123", key_with_newline, value_with_newline);
+    let result = save_credential(&file_path, "password123", key_with_newline, value_with_newline, None, None, None);
 
     // Then: Should save successfully
     assert!(result.is_ok());
@@ -511,7 +511,7 @@ fn test_save_with_very_long_key_and_value() {
     // When: Using key and value at the maximum allowed lengths
     let long_key = "a".repeat(64);
     let long_value = "b".repeat(5000);
-    let result = save_credential(&file_path, "password123", &long_key, &long_value);
+    let result = save_credential(&file_path, "password123", &long_key, &long_value, None, None, None);
 
     // Then: Should handle properly
     assert!(result.is_ok());
@@ -528,7 +528,7 @@ fn test_save_creates_file_with_proper_permissions() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving a credential
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // Then: File should have restricted permissions (on Unix systems)
     #[cfg(unix)]
@@ -548,7 +548,7 @@ fn test_save_in_nonexistent_directory() {
     let file_path = temp_dir.path().join("nonexistent").join("credentials.enc");
 
     // When: Attempting to save
-    let result = save_credential(&file_path, "password123", "key", "value");
+    let result = save_credential(&file_path, "password123", "key", "value", None, None, None);
 
     // Then: Should return an error
     assert!(result.is_err());
@@ -565,7 +565,7 @@ fn test_save_creates_binary_file_not_json() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving a credential
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // Then: File should be in binary format (not JSON wrapper)
     let content = fs::read(&file_path).unwrap();
@@ -588,7 +588,7 @@ fn test_save_binary_format_structure() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
     // When: Saving a credential
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // Then: File should have correct binary structure
     let content = fs::read(&file_path).unwrap();
@@ -620,8 +620,8 @@ fn test_save_different_passwords_create_different_encrypted_files() {
     let file_path2 = get_test_file_path(&temp_dir, "file2.enc");
 
     // When: Saving same credentials with different passwords
-    save_credential(&file_path1, "password123", "key", "value").unwrap();
-    save_credential(&file_path2, "different456", "key", "value").unwrap();
+    save_credential(&file_path1, "password123", "key", "value", None, None, None).unwrap();
+    save_credential(&file_path2, "different456", "key", "value", None, None, None).unwrap();
 
     // Then: Files should have different encrypted content
     let content1 = fs::read(&file_path1).unwrap();
@@ -637,8 +637,8 @@ fn test_save_same_data_twice_creates_different_encrypted_files() {
     let file_path2 = get_test_file_path(&temp_dir, "file2.enc");
 
     // When: Saving same credentials with same password to different files
-    save_credential(&file_path1, "password123", "key", "value").unwrap();
-    save_credential(&file_path2, "password123", "key", "value").unwrap();
+    save_credential(&file_path1, "password123", "key", "value", None, None, None).unwrap();
+    save_credential(&file_path2, "password123", "key", "value", None, None, None).unwrap();
 
     // Then: Files should have different content (due to random nonce/salt)
     let content1 = fs::read(&file_path1).unwrap();
@@ -654,8 +654,8 @@ fn test_save_can_decrypt_and_retrieve_saved_credentials() {
     let password = "my-secure-password";
 
     // When: Saving multiple credentials
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // Then: Should be able to decrypt and retrieve all values
     let credentials = list_credentials(&file_path, password).unwrap();

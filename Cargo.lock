@@ -3593,7 +3593,7 @@ dependencies = [
 
 [[package]]
 name = "lootbox"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3610,7 +3610,7 @@ dependencies = [
 
 [[package]]
 name = "lootbox-gui"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "gpui",

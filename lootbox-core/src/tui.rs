@@ -27,8 +27,43 @@ use std::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
+    Name,
     Key,
     Value,
+    Url,
+    Description,
+}
+
+impl Field {
+    fn next(self) -> Self {
+        match self {
+            Field::Name => Field::Key,
+            Field::Key => Field::Value,
+            Field::Value => Field::Value, // Tab on Value toggles visibility, not advance
+            Field::Url => Field::Description,
+            Field::Description => Field::Name,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            Field::Name => Field::Description,
+            Field::Key => Field::Name,
+            Field::Value => Field::Key,
+            Field::Url => Field::Value,
+            Field::Description => Field::Url,
+        }
+    }
+
+    fn enter_next(self) -> Self {
+        match self {
+            Field::Name => Field::Key,
+            Field::Key => Field::Value,
+            Field::Value => Field::Value,
+            Field::Url => Field::Description,
+            Field::Description => Field::Description,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,8 +83,11 @@ enum AppState {
         selected: usize,
     },
     AddForm {
+        name: String,
         key: String,
         value: String,
+        url: String,
+        description: String,
         focus: Field,
         value_visible: bool,
         error: Option<String>,
@@ -57,8 +95,11 @@ enum AppState {
     UpdateForm {
         step: UpdateStep,
         id: String,
+        name: String,
         key: String,
         value: String,
+        url: String,
+        description: String,
         focus: Field,
         value_visible: bool,
         error: Option<String>,
@@ -260,7 +301,6 @@ fn handle_password(code: KeyCode, app: &mut App) -> Result<bool> {
 }
 
 fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
-    // Read current selection before mutating state
     let (cred_count, selected) =
         if let AppState::CredentialList { ref credentials, selected } = app.state {
             (credentials.len(), selected)
@@ -284,9 +324,12 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
 
         KeyCode::Char('a') | KeyCode::Char('A') => {
             app.state = AppState::AddForm {
+                name: String::new(),
                 key: String::new(),
                 value: String::new(),
-                focus: Field::Key,
+                url: String::new(),
+                description: String::new(),
+                focus: Field::Name,
                 value_visible: false,
                 error: None,
             };
@@ -298,9 +341,12 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
                     app.state = AppState::UpdateForm {
                         step: UpdateStep::EditFields,
                         id: format!("{pos}"),
+                        name: cred.name,
                         key: cred.key,
                         value: cred.value,
-                        focus: Field::Key,
+                        url: cred.url.unwrap_or_default(),
+                        description: cred.description.unwrap_or_default(),
+                        focus: Field::Name,
                         value_visible: false,
                         error: None,
                     };
@@ -388,10 +434,30 @@ fn handle_list(code: KeyCode, app: &mut App) -> Result<bool> {
     Ok(false)
 }
 
+fn focused_field_mut<'a>(
+    name: &'a mut String,
+    key: &'a mut String,
+    value: &'a mut String,
+    url: &'a mut String,
+    description: &'a mut String,
+    focus: Field,
+) -> &'a mut String {
+    match focus {
+        Field::Name => name,
+        Field::Key => key,
+        Field::Value => value,
+        Field::Url => url,
+        Field::Description => description,
+    }
+}
+
 fn handle_add(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<bool> {
     let AppState::AddForm {
+        ref mut name,
         ref mut key,
         ref mut value,
+        ref mut url,
+        ref mut description,
         ref mut focus,
         ref mut value_visible,
         ref mut error,
@@ -405,35 +471,40 @@ fn handle_add(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
             app.state = app.credential_list_state();
         }
         KeyCode::Tab => {
-            if *focus == Field::Key {
-                *focus = Field::Value;
-            } else {
+            if *focus == Field::Value {
                 *value_visible = !*value_visible;
+            } else {
+                *focus = focus.next();
             }
             *error = None;
         }
         KeyCode::BackTab => {
-            if *focus == Field::Value {
-                *focus = Field::Key;
-            }
+            *focus = focus.prev();
             *error = None;
         }
         KeyCode::Backspace => {
-            if *focus == Field::Key {
-                key.pop();
-            } else {
-                value.pop();
-            }
+            focused_field_mut(name, key, value, url, description, *focus).pop();
             *error = None;
         }
         KeyCode::Enter => {
-            if *focus == Field::Key && !modifiers.contains(KeyModifiers::SHIFT) {
-                *focus = Field::Value;
+            if *focus != Field::Value && !modifiers.contains(KeyModifiers::SHIFT) {
+                *focus = focus.enter_next();
                 return Ok(false);
             }
+            let n = name.clone();
             let k = key.clone();
             let v = value.clone();
-            match save_credential(&app.file_path, &app.password, &k, &v) {
+            let u = url.clone();
+            let d = description.clone();
+            match save_credential(
+                &app.file_path,
+                &app.password,
+                &k,
+                &v,
+                Some(&n),
+                if d.is_empty() { None } else { Some(&d) },
+                if u.is_empty() { None } else { Some(&u) },
+            ) {
                 Ok(()) => {
                     app.state = app.credential_list_state();
                 }
@@ -443,11 +514,7 @@ fn handle_add(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Result<b
             }
         }
         KeyCode::Char(c) => {
-            if *focus == Field::Key {
-                key.push(c);
-            } else {
-                value.push(c);
-            }
+            focused_field_mut(name, key, value, url, description, *focus).push(c);
             *error = None;
         }
         _ => {}
@@ -459,8 +526,11 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
     let AppState::UpdateForm {
         ref mut step,
         ref mut id,
+        ref mut name,
         ref mut key,
         ref mut value,
+        ref mut url,
+        ref mut description,
         ref mut focus,
         ref mut value_visible,
         ref mut error,
@@ -475,36 +545,42 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
                 app.state = app.credential_list_state();
             }
             KeyCode::Tab => {
-                if *focus == Field::Key {
-                    *focus = Field::Value;
-                } else {
+                if *focus == Field::Value {
                     *value_visible = !*value_visible;
+                } else {
+                    *focus = focus.next();
                 }
                 *error = None;
             }
             KeyCode::BackTab => {
-                if *focus == Field::Value {
-                    *focus = Field::Key;
-                }
+                *focus = focus.prev();
                 *error = None;
             }
             KeyCode::Backspace => {
-                if *focus == Field::Key {
-                    key.pop();
-                } else {
-                    value.pop();
-                }
+                focused_field_mut(name, key, value, url, description, *focus).pop();
                 *error = None;
             }
             KeyCode::Enter => {
-                if *focus == Field::Key && !modifiers.contains(KeyModifiers::SHIFT) {
-                    *focus = Field::Value;
+                if *focus != Field::Value && !modifiers.contains(KeyModifiers::SHIFT) {
+                    *focus = focus.enter_next();
                     return Ok(false);
                 }
                 let pos: usize = id.parse().unwrap_or(0);
-                let new_key = Some(key.as_str());
-                let new_value = Some(value.as_str());
-                match update_credential(&app.file_path, &app.password, pos, new_key, new_value) {
+                let n = name.clone();
+                let k = key.clone();
+                let v = value.clone();
+                let u = url.clone();
+                let d = description.clone();
+                match update_credential(
+                    &app.file_path,
+                    &app.password,
+                    pos,
+                    Some(k.as_str()),
+                    Some(v.as_str()),
+                    Some(n.as_str()),
+                    Some(if d.is_empty() { "" } else { &d }),
+                    Some(if u.is_empty() { "" } else { &u }),
+                ) {
                     Ok(()) => {
                         app.state = app.credential_list_state();
                     }
@@ -514,11 +590,7 @@ fn handle_update(code: KeyCode, modifiers: KeyModifiers, app: &mut App) -> Resul
                 }
             }
             KeyCode::Char(c) => {
-                if *focus == Field::Key {
-                    key.push(c);
-                } else {
-                    value.push(c);
-                }
+                focused_field_mut(name, key, value, url, description, *focus).push(c);
                 *error = None;
             }
             _ => {}
@@ -557,6 +629,7 @@ fn handle_read_view(code: KeyCode, app: &mut App) -> Result<bool> {
     };
     let key_str = credential.key.clone();
     let val_str = credential.value.clone();
+    let url_str = credential.url.clone();
 
     match code {
         KeyCode::Tab => {
@@ -577,6 +650,16 @@ fn handle_read_view(code: KeyCode, app: &mut App) -> Result<bool> {
                 Ok(()) => "Value copied!".to_string(),
                 Err(_) => "Clipboard unavailable".to_string(),
             });
+        }
+        KeyCode::Char('u') | KeyCode::Char('U') => {
+            if let Some(url) = url_str {
+                *clipboard_status = Some(match arboard::Clipboard::new()
+                    .and_then(|mut c| c.set_text(url))
+                {
+                    Ok(()) => "URL copied!".to_string(),
+                    Err(_) => "Clipboard unavailable".to_string(),
+                });
+            }
         }
         KeyCode::Esc => {
             app.state = app.credential_list_state();
@@ -696,13 +779,13 @@ fn draw(f: &mut Frame, app: &App) {
         AppState::CredentialList { credentials, selected } => {
             draw_list(f, &app.file_path, credentials, *selected);
         }
-        AppState::AddForm { key, value, focus, value_visible, error } => {
+        AppState::AddForm { name, key, value, url, description, focus, value_visible, error } => {
             draw_list_bg(f);
-            draw_add_form(f, key, value, *focus, *value_visible, error);
+            draw_add_form(f, name, key, value, url, description, *focus, *value_visible, error);
         }
-        AppState::UpdateForm { step, id, key, value, focus, value_visible, error } => {
+        AppState::UpdateForm { step, id, name, key, value, url, description, focus, value_visible, error } => {
             draw_list_bg(f);
-            draw_update_form(f, *step, id, key, value, *focus, *value_visible, error);
+            draw_update_form(f, *step, id, name, key, value, url, description, *focus, *value_visible, error);
         }
         AppState::RemoveConfirm { id, key, error } => {
             draw_list_bg(f);
@@ -831,7 +914,7 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential], sel
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let header = Row::new(vec!["ID", "Key", "Value"])
+    let header = Row::new(vec!["ID", "Name", "Value"])
         .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
 
     let rows: Vec<Row> = credentials
@@ -840,7 +923,7 @@ fn draw_list(f: &mut Frame, file_path: &PathBuf, credentials: &[Credential], sel
         .map(|(i, c)| {
             Row::new(vec![
                 format!("{}", i + 1),
-                c.key.clone(),
+                c.display_name().to_string(),
                 "**********".to_string(),
             ])
             .style(Style::default().fg(Color::White))
@@ -901,15 +984,27 @@ fn mask(s: &str) -> String {
     "●".repeat(s.chars().count())
 }
 
+fn field_style(focused: bool, color: Color) -> Style {
+    if focused {
+        Style::default().fg(color).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw_add_form(
     f: &mut Frame,
+    name: &str,
     key: &str,
     value: &str,
+    url: &str,
+    description: &str,
     focus: Field,
     value_visible: bool,
     error: &Option<String>,
 ) {
-    let area = centered_rect(60, 55, f.area());
+    let area = centered_rect(60, 70, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default()
@@ -920,33 +1015,34 @@ fn draw_add_form(
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let key_style = if focus == Field::Key {
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    let val_style = if focus == Field::Value {
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::White)
-    };
-
-    let displayed_value = if value_visible {
-        format!("{}_", value)
-    } else {
-        format!("{}_", mask(value))
-    };
+    let c = Color::Green;
+    let displayed_value = if value_visible { format!("{}_", value) } else { format!("{}_", mask(value)) };
 
     let mut lines = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Key:   ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{}_", key), key_style),
+            Span::styled("  Name:        ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{}_", name), field_style(focus == Field::Name, c)),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(displayed_value, val_style),
+            Span::styled("  Key:         ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{}_", key), field_style(focus == Field::Key, c)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Value:       ", Style::default().fg(Color::DarkGray)),
+            Span::styled(displayed_value, field_style(focus == Field::Value, c)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  URL:         ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{}_", url), field_style(focus == Field::Url, c)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Description: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{}_", description), field_style(focus == Field::Description, c)),
         ]),
         Line::from(""),
     ];
@@ -959,27 +1055,31 @@ fn draw_add_form(
         lines.push(Line::from(""));
     }
 
-    let hint = if focus == Field::Key {
-        "  Tab → go to value   Enter → save   Esc → cancel"
+    let hint = if focus == Field::Value {
+        "  Tab → show/hide value   BackTab/Enter → next field   Esc → cancel"
     } else {
-        "  Tab → show/hide value   BackTab → go to key   Enter → save   Esc → cancel"
+        "  Enter → next field   Tab → next field   Shift+Enter → save   Esc → cancel"
     };
     lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
 
     f.render_widget(Paragraph::new(lines), inner);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_update_form(
     f: &mut Frame,
     step: UpdateStep,
     id: &str,
+    name: &str,
     key: &str,
     value: &str,
+    url: &str,
+    description: &str,
     focus: Field,
     value_visible: bool,
     error: &Option<String>,
 ) {
-    let area = centered_rect(60, 60, f.area());
+    let area = centered_rect(60, 75, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default()
@@ -994,22 +1094,8 @@ fn draw_update_form(
 
     match step {
         UpdateStep::EditFields => {
-            let key_style = if focus == Field::Key {
-                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            let val_style = if focus == Field::Value {
-                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-
-            let displayed_value = if value_visible {
-                format!("{}_", value)
-            } else {
-                format!("{}_", mask(value))
-            };
+            let c = Color::Blue;
+            let displayed_value = if value_visible { format!("{}_", value) } else { format!("{}_", mask(value)) };
 
             lines.push(Line::from(Span::styled(
                 format!("  Editing ID: {id}"),
@@ -1017,15 +1103,31 @@ fn draw_update_form(
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("  Key:   ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{}_", key), key_style),
+                Span::styled("  Name:        ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}_", name), field_style(focus == Field::Name, c)),
             ]));
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(displayed_value, val_style),
+                Span::styled("  Key:         ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}_", key), field_style(focus == Field::Key, c)),
             ]));
             lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Value:       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(displayed_value, field_style(focus == Field::Value, c)),
+            ]));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("  URL:         ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}_", url), field_style(focus == Field::Url, c)),
+            ]));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Description: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}_", description), field_style(focus == Field::Description, c)),
+            ]));
+            lines.push(Line::from(""));
+
             if let Some(err) = error {
                 lines.push(Line::from(Span::styled(
                     format!("  {err}"),
@@ -1033,10 +1135,10 @@ fn draw_update_form(
                 )));
                 lines.push(Line::from(""));
             }
-            let hint = if focus == Field::Key {
-                "  Tab → go to value   Enter → save   Esc → cancel"
+            let hint = if focus == Field::Value {
+                "  Tab → show/hide value   BackTab/Enter → next field   Esc → cancel"
             } else {
-                "  Tab → show/hide value   BackTab → go to key   Enter → save   Esc → cancel"
+                "  Enter → next field   Shift+Enter → save   Esc → cancel"
             };
             lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
         }
@@ -1107,7 +1209,7 @@ fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visib
     let mut lines = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ID:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  ID:          ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 format!("{}", id),
                 Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
@@ -1115,16 +1217,37 @@ fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visib
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Key:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Name:        ", Style::default().fg(Color::DarkGray)),
+            Span::styled(credential.display_name(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Key:         ", Style::default().fg(Color::DarkGray)),
             Span::styled(&credential.key, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Value:       ", Style::default().fg(Color::DarkGray)),
             Span::styled(displayed_value, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(""),
     ];
+
+    if let Some(ref url) = credential.url {
+        lines.push(Line::from(vec![
+            Span::styled("  URL:         ", Style::default().fg(Color::DarkGray)),
+            Span::styled(url, Style::default().fg(Color::Cyan)),
+        ]));
+        lines.push(Line::from(""));
+    }
+
+    if let Some(ref desc) = credential.description {
+        lines.push(Line::from(vec![
+            Span::styled("  Description: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(desc, Style::default().fg(Color::White)),
+        ]));
+        lines.push(Line::from(""));
+    }
 
     if let Some(status) = clipboard_status {
         lines.push(Line::from(Span::styled(
@@ -1134,8 +1257,9 @@ fn draw_read_view(f: &mut Frame, id: usize, credential: &Credential, value_visib
         lines.push(Line::from(""));
     }
 
+    let url_hint = if credential.url.is_some() { "   U → copy URL" } else { "" };
     lines.push(Line::from(Span::styled(
-        format!("  K → copy key   V → copy value   Tab → {toggle_label} value   Esc → back"),
+        format!("  K → copy key   V → copy value{url_hint}   Tab → {toggle_label} value   Esc → back"),
         Style::default().fg(Color::DarkGray),
     )));
 

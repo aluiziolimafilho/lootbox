@@ -140,7 +140,7 @@ fn render_empty_unlocked_does_not_panic(cx: &mut TestAppContext) {
 fn render_credential_form_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -170,7 +170,7 @@ fn render_credential_form_does_not_panic(cx: &mut TestAppContext) {
 fn render_remove_confirm_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -202,7 +202,7 @@ fn render_remove_confirm_does_not_panic(cx: &mut TestAppContext) {
 fn render_unlocked_with_read_detail_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -231,7 +231,7 @@ fn render_unlocked_with_read_detail_does_not_panic(cx: &mut TestAppContext) {
 fn render_env_vars_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -261,7 +261,7 @@ fn render_env_vars_does_not_panic(cx: &mut TestAppContext) {
 fn render_env_vars_invalid_key_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api@key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api@key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);
@@ -291,7 +291,7 @@ fn render_env_vars_invalid_key_does_not_panic(cx: &mut TestAppContext) {
 fn render_csv_form_does_not_panic(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let file_path = dir.path().join("vault.enc");
-    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value")
+    lootbox::save_credential(&file_path, "correct-password", "api_key", "secret-value", None, None, None)
         .expect("seed vault");
 
     let (window, view) = open_test_window(cx, file_path);

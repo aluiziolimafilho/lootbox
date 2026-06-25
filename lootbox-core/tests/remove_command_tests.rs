@@ -26,7 +26,7 @@ fn test_remove_only_credential_leaves_empty_file() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "only_key", "only_value").unwrap();
+    save_credential(&file_path, password, "only_key", "only_value", None, None, None).unwrap();
 
     // When: Removing the only credential
     let result = remove_credential(&file_path, password, 1);
@@ -45,9 +45,9 @@ fn test_remove_first_credential_from_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Removing the first credential (ID 1)
     let result = remove_credential(&file_path, password, 1);
@@ -70,9 +70,9 @@ fn test_remove_middle_credential_from_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Removing the middle credential (ID 2)
     let result = remove_credential(&file_path, password, 2);
@@ -95,9 +95,9 @@ fn test_remove_last_credential_from_multiple() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Removing the last credential (ID 3)
     let result = remove_credential(&file_path, password, 3);
@@ -118,10 +118,10 @@ fn test_remove_decreases_count_by_one() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
-    save_credential(&file_path, password, "key4", "value4").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
+    save_credential(&file_path, password, "key4", "value4", None, None, None).unwrap();
 
     // When: Removing one credential
     remove_credential(&file_path, password, 2).unwrap();
@@ -138,10 +138,10 @@ fn test_remove_preserves_order_of_remaining_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "a", "1").unwrap();
-    save_credential(&file_path, password, "b", "2").unwrap();
-    save_credential(&file_path, password, "c", "3").unwrap();
-    save_credential(&file_path, password, "d", "4").unwrap();
+    save_credential(&file_path, password, "a", "1", None, None, None).unwrap();
+    save_credential(&file_path, password, "b", "2", None, None, None).unwrap();
+    save_credential(&file_path, password, "c", "3", None, None, None).unwrap();
+    save_credential(&file_path, password, "d", "4", None, None, None).unwrap();
 
     // When: Removing the second credential
     remove_credential(&file_path, password, 2).unwrap();
@@ -163,9 +163,9 @@ fn test_remove_shifts_ids_of_subsequent_credentials() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Removing credential 1, then removing what was credential 3 (now at ID 2)
     remove_credential(&file_path, password, 1).unwrap();
@@ -185,9 +185,9 @@ fn test_remove_all_credentials_sequentially() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Removing all credentials one by one (always removing ID 1)
     remove_credential(&file_path, password, 1).unwrap();
@@ -206,9 +206,9 @@ fn test_remove_does_not_alter_other_credentials_data() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "sensitive_value_1").unwrap();
-    save_credential(&file_path, password, "key2", "sensitive_value_2").unwrap();
-    save_credential(&file_path, password, "key3", "sensitive_value_3").unwrap();
+    save_credential(&file_path, password, "key1", "sensitive_value_1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "sensitive_value_2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "sensitive_value_3", None, None, None).unwrap();
 
     // When: Removing the middle credential
     remove_credential(&file_path, password, 2).unwrap();
@@ -232,7 +232,7 @@ fn test_remove_fails_with_id_zero() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with ID 0
     let result = remove_credential(&file_path, password, 0);
@@ -250,8 +250,8 @@ fn test_remove_fails_with_id_greater_than_count() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Attempting to remove with ID 5
     let result = remove_credential(&file_path, password, 5);
@@ -269,9 +269,9 @@ fn test_remove_fails_with_id_one_more_than_count() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // When: Attempting to remove with ID 4 (one beyond last)
     let result = remove_credential(&file_path, password, 4);
@@ -287,7 +287,7 @@ fn test_remove_fails_on_empty_credential_list() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key", "value").unwrap();
+    save_credential(&file_path, password, "key", "value", None, None, None).unwrap();
     remove_credential(&file_path, password, 1).unwrap();
 
     // When: Attempting to remove from an empty list
@@ -309,7 +309,7 @@ fn test_remove_fails_with_wrong_password() {
     let correct_password = "correct123";
     let wrong_password = "wrong456789";
 
-    save_credential(&file_path, correct_password, "key", "value").unwrap();
+    save_credential(&file_path, correct_password, "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with wrong password
     let result = remove_credential(&file_path, wrong_password, 1);
@@ -375,7 +375,7 @@ fn test_remove_fails_with_truncated_encrypted_file() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     let mut file_content = fs::read(&file_path).unwrap();
     file_content.truncate(file_content.len() / 2);
@@ -398,7 +398,7 @@ fn test_remove_with_empty_password() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with empty password
     let result = remove_credential(&file_path, "", 1);
@@ -413,7 +413,7 @@ fn test_remove_with_password_less_than_8_characters() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with 7-character password
     let result = remove_credential(&file_path, "pass123", 1);
@@ -430,7 +430,7 @@ fn test_remove_with_password_only_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with whitespace-only password
     let result = remove_credential(&file_path, "        ", 1);
@@ -447,7 +447,7 @@ fn test_remove_with_password_starting_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with password starting with whitespace
     let result = remove_credential(&file_path, " password123", 1);
@@ -464,7 +464,7 @@ fn test_remove_with_password_ending_with_whitespace() {
     let temp_dir = setup_test_dir();
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
 
-    save_credential(&file_path, "password123", "key", "value").unwrap();
+    save_credential(&file_path, "password123", "key", "value", None, None, None).unwrap();
 
     // When: Attempting to remove with password ending with whitespace
     let result = remove_credential(&file_path, "password123 ", 1);
@@ -486,8 +486,8 @@ fn test_remove_does_not_affect_file_if_error() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Attempting to remove with an invalid ID
     let result = remove_credential(&file_path, password, 10);
@@ -511,8 +511,8 @@ fn test_remove_with_special_characters_in_remaining_credentials() {
     let special_key = "key@#$%^&*()";
     let special_value = "value!@#$%^&*(){}[]|\\:;\"'<>,.?/~`";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, special_key, special_value).unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, special_key, special_value, None, None, None).unwrap();
 
     // When: Removing the first credential
     remove_credential(&file_path, password, 1).unwrap();
@@ -534,8 +534,8 @@ fn test_remove_with_unicode_characters_in_remaining_credentials() {
     let unicode_key = "密钥🔑";
     let unicode_value = "秘密値🔐";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, unicode_key, unicode_value).unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, unicode_key, unicode_value, None, None, None).unwrap();
 
     // When: Removing the first credential
     remove_credential(&file_path, password, 1).unwrap();
@@ -554,8 +554,8 @@ fn test_remove_file_remains_accessible_after_removal() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
 
     // When: Removing one credential
     remove_credential(&file_path, password, 1).unwrap();
@@ -573,12 +573,12 @@ fn test_remove_then_save_appends_correctly() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "key1", "value1").unwrap();
-    save_credential(&file_path, password, "key2", "value2").unwrap();
+    save_credential(&file_path, password, "key1", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "key2", "value2", None, None, None).unwrap();
     remove_credential(&file_path, password, 1).unwrap();
 
     // When: Saving a new credential to the same file
-    save_credential(&file_path, password, "key3", "value3").unwrap();
+    save_credential(&file_path, password, "key3", "value3", None, None, None).unwrap();
 
     // Then: File should contain the remaining and new credential
     let credentials = list_credentials(&file_path, password).unwrap();
@@ -594,9 +594,9 @@ fn test_remove_specific_credential_among_duplicates() {
     let file_path = get_test_file_path(&temp_dir, "credentials.enc");
     let password = "password123";
 
-    save_credential(&file_path, password, "same_key", "value1").unwrap();
-    save_credential(&file_path, password, "same_key", "value2").unwrap();
-    save_credential(&file_path, password, "same_key", "value3").unwrap();
+    save_credential(&file_path, password, "same_key", "value1", None, None, None).unwrap();
+    save_credential(&file_path, password, "same_key", "value2", None, None, None).unwrap();
+    save_credential(&file_path, password, "same_key", "value3", None, None, None).unwrap();
 
     // When: Removing the second entry (ID 2)
     remove_credential(&file_path, password, 2).unwrap();
