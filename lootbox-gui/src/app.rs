@@ -709,48 +709,20 @@ impl AppView {
         description_input.update(cx, |state, cx| state.focus(window, cx));
     }
 
-    /// `Tab` on the Value field toggles visibility instead of moving focus -- this reproduces
-    /// the TUI's deliberate quirk. `IndentInline` is bound to `tab` inside gpui-component's
-    /// "Input" key context for every Input, but only *handled* when the input is multi-line;
-    /// for our single-line fields it has no handler and therefore propagates here unconsumed.
-    pub fn toggle_value_visibility_from_value_field(
+    /// `Enter` on the Value field advances focus to the URL field.
+    pub fn advance_from_value_field(
         &mut self,
-        _: &gpui_component::input::IndentInline,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let AppScreen::Unlocked { detail, .. } = &mut self.screen else {
-            return;
-        };
-        let DetailPane::Form {
-            value_input,
-            value_visible,
-            ..
-        } = detail
-        else {
-            return;
-        };
-        *value_visible = !*value_visible;
-        let now_visible = *value_visible;
-        value_input.update(cx, |state, cx| state.set_masked(!now_visible, window, cx));
-        cx.notify();
-    }
-
-    /// `Shift-Tab` on the Value field always moves focus back to the Key field (never toggles
-    /// visibility), matching the TUI's asymmetric Tab/BackTab handling in `handle_add`.
-    pub fn move_focus_to_key_field(
-        &mut self,
-        _: &gpui_component::input::OutdentInline,
+        _: &gpui_component::input::Enter,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let AppScreen::Unlocked { detail, .. } = &self.screen else {
             return;
         };
-        let DetailPane::Form { key_input, .. } = detail else {
+        let DetailPane::Form { url_input, .. } = detail else {
             return;
         };
-        key_input.update(cx, |state, cx| state.focus(window, cx));
+        url_input.update(cx, |state, cx| state.focus(window, cx));
     }
 
     /// `Escape` from either field cancels the form and returns to the Read pane.

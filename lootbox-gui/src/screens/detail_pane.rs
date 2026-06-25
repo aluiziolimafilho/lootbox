@@ -267,14 +267,9 @@ fn render_form(
                                 .flex()
                                 .flex_col()
                                 .gap_1()
-                                .on_action(cx.listener(AppView::submit_credential_form))
-                                .on_action(cx.listener(
-                                    AppView::toggle_value_visibility_from_value_field,
-                                ))
-                                .on_action(cx.listener(AppView::move_focus_to_key_field))
+                                .on_action(cx.listener(AppView::advance_from_value_field))
                                 .child("Value")
-                                .child(Input::new(&value_input).mask_toggle())
-                                .child("(Tab also toggles reveal)"),
+                                .child(Input::new(&value_input).mask_toggle()),
                         )
                         .child(
                             div()
@@ -290,6 +285,7 @@ fn render_form(
                                 .flex()
                                 .flex_col()
                                 .gap_1()
+                                .on_action(cx.listener(AppView::submit_credential_form))
                                 .child("Description (optional)")
                                 .child(Input::new(&description_input)),
                         ),
